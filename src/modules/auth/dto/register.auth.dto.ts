@@ -1,6 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  ArrayMinSize,
+  IsArray,
   IsEmail,
   IsIn,
   IsNotEmpty,
@@ -26,4 +28,8 @@ export class RegisterDto {
     message: 'The only allowed values are "administrator", "vendor" or "buyer"',
   })
   role_id: number;
+
+  @IsArray()
+  @ArrayMinSize(2)
+  descriptors!: number[][];
 }

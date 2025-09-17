@@ -11,6 +11,8 @@ import { LoginAuthDto } from './dto/login.auth.dto';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { RecoverToken } from './entities/token.entity';
+import { FaceService } from '../face/face.service';
+import { FaceEnrollment } from '../face/entities/face-enrollments.entity';
 
 @Injectable()
 export class AuthService {
@@ -65,16 +67,30 @@ export class AuthService {
     };
   }
 
-  async register({ email, password, role_id }: RegisterDto) {
+  async register({ email, password, role_id, descriptors }: RegisterDto) {
     await this.checkDoesEmailExist(email);
-    const hashedPass = await bcrypt.hash(password, bcrypt.genSaltSync(10));
-    const user = this.userRepository.create({
-      role_id,
-      email,
-      password: hashedPass,
+    return await this.userRepository.manager.transaction(async (em) => {
+      const hashedPass = await bcrypt.hash(password, bcrypt.genSaltSync(10));
+      const user = em.create(User, {
+        role_id: Number(role_id),
+        email,
+        password: hashedPass,
+      });
+      await em.save(user);
+
+      const faceSvc = new FaceService(
+        em.getRepository(FaceEnrollment),
+        em.getRepository(User),
+      );
+      await faceSvc.enrollByUserId(user.id, descriptors);
+
+      return {
+        statusCode: 201,
+        message: 'Usuario registrado y rostro enrolado',
+        data: { id: user.id, email: user.email, role_id: user.role_id },
+        metadata: null,
+      };
     });
-    await this.userRepository.save(user);
-    return user;
   }
 
   private generateRandomCode(): number {

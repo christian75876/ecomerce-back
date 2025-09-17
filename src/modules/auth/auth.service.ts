@@ -106,4 +106,19 @@ export class AuthService {
     });
     return await this.recoverTokenRepository.save(token);
   }
+
+  async issueTokenForUser(userId: number, roleId: number, email: string) {
+    const now = Math.floor(Date.now() / 1000);
+    const payload = {
+      sub: userId,
+      role_id: roleId,
+      email,
+      iat: now,
+      expiresIn: '1h',
+    };
+    return {
+      message: 'Here is your token:',
+      token: await this.jwtService.signAsync(payload),
+    };
+  }
 }

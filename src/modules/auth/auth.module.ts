@@ -7,9 +7,11 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { User } from '../users/entities/user.entity';
 import { RecoverToken } from './entities/token.entity';
+import { FaceModule } from '../face/face.module';
 
 @Module({
   imports: [
+    FaceModule,
     TypeOrmModule.forFeature([User, RecoverToken]),
     ConfigModule.forRoot(),
     JwtModule.registerAsync({

@@ -6,7 +6,6 @@ import { AuthModule } from './modules/auth/auth.module';
 import { AppInitializer } from './app.initializer';
 import { RoleSeederService } from './modules/users/initializer/role.insert';
 import { InsertUserService } from './modules/users/initializer/user.insert';
-import { FaceModule } from './modules/face/face.module';
 
 @Module({
   imports: [
@@ -16,7 +15,6 @@ import { FaceModule } from './modules/face/face.module';
     }),
     DatabaseModule,
     AuthModule,
-    FaceModule,
   ],
   providers: [
     JwtStrategy,

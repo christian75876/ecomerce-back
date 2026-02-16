@@ -11,8 +11,6 @@ import { LoginAuthDto } from './dto/login.auth.dto';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { RecoverToken } from './entities/token.entity';
-import { FaceService } from '../face/face.service';
-import { FaceEnrollment } from '../face/entities/face-enrollments.entity';
 
 @Injectable()
 export class AuthService {
@@ -67,7 +65,7 @@ export class AuthService {
     };
   }
 
-  async register({ email, password, role_id, descriptors }: RegisterDto) {
+  async register({ email, password, role_id }: RegisterDto) {
     await this.checkDoesEmailExist(email);
     return await this.userRepository.manager.transaction(async (em) => {
       const hashedPass = await bcrypt.hash(password, bcrypt.genSaltSync(10));
@@ -78,15 +76,9 @@ export class AuthService {
       });
       await em.save(user);
 
-      const faceSvc = new FaceService(
-        em.getRepository(FaceEnrollment),
-        em.getRepository(User),
-      );
-      await faceSvc.enrollByUserId(user.id, descriptors);
-
       return {
         statusCode: 201,
-        message: 'Usuario registrado y rostro enrolado',
+        message: 'Usuario registrado',
         data: { id: user.id, email: user.email, role_id: user.role_id },
         metadata: null,
       };

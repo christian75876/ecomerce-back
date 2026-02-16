@@ -6,10 +6,9 @@ import { RoleSeederService } from './initializer/role.insert';
 import { InsertUserService } from './initializer/user.insert';
 import { UserController } from './user.controller';
 import { UserService } from './users.service';
-import { FaceEnrollment } from '../face/entities/face-enrollments.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User, Role, FaceEnrollment])],
+  imports: [TypeOrmModule.forFeature([User, Role])],
   providers: [RoleSeederService, InsertUserService, UserService],
   controllers: [UserController],
 })

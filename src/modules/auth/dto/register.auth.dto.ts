@@ -1,8 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
 import {
-  ArrayMinSize,
-  IsArray,
   IsEmail,
   IsIn,
   IsNotEmpty,
@@ -21,7 +18,6 @@ export class RegisterDto {
   @IsNotEmpty()
   password: string;
 
-  @Type(() => Number)
   @IsNotEmpty()
   @IsNumber()
   @IsIn([1, 2, 3], {
@@ -29,7 +25,4 @@ export class RegisterDto {
   })
   role_id: number;
 
-  @IsArray()
-  @ArrayMinSize(2)
-  descriptors!: number[][];
 }

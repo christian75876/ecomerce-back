@@ -1,10 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger';
 import {
   IsEmail,
-  IsIn,
   IsNotEmpty,
-  IsNumber,
   IsStrongPassword,
+  IsUUID,
 } from 'class-validator';
 
 export class RegisterDto {
@@ -19,10 +18,8 @@ export class RegisterDto {
   password: string;
 
   @IsNotEmpty()
-  @IsNumber()
-  @IsIn([1, 2, 3], {
-    message: 'The only allowed values are "administrator", "vendor" or "buyer"',
-  })
-  role_id: number;
+  @ApiProperty({ example: 'b1ff81be-8f45-4f13-9d00-4ca5c6d5ef77' })
+  @IsUUID('4', { message: 'role_id must be a valid UUID v4' })
+  role_id: string;
 
 }

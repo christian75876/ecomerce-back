@@ -70,7 +70,7 @@ export class AuthService {
     return await this.userRepository.manager.transaction(async (em) => {
       const hashedPass = await bcrypt.hash(password, bcrypt.genSaltSync(10));
       const user = em.create(User, {
-        role_id: Number(role_id),
+        role_id,
         email,
         password: hashedPass,
       });
@@ -99,7 +99,7 @@ export class AuthService {
     return await this.recoverTokenRepository.save(token);
   }
 
-  async issueTokenForUser(userId: number, roleId: number, email: string) {
+  async issueTokenForUser(userId: number, roleId: string, email: string) {
     const now = Math.floor(Date.now() / 1000);
     const payload = {
       sub: userId,

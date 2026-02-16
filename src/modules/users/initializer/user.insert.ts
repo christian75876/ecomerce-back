@@ -18,8 +18,21 @@ export class InsertUserService {
       return;
     }
 
-    await this.entityManager.query(`
-      INSERT INTO users (email, password, role_id) VALUES ('admin@gmail.com', '$2b$10$bwoSfZaHYiiuqIcIC4dT4Oug4sjnGvG2q4p50lfSkIDj1v.rzYSd2', 1);
+    const [adminRole] = await this.entityManager.query(`
+      SELECT id FROM roles WHERE name = 'admin' LIMIT 1
       `);
+
+    if (!adminRole?.id) {
+      console.log('Admin role does not exist, skipping admin user insertion.');
+      return;
+    }
+
+    await this.entityManager.query(
+      `
+      INSERT INTO users (email, password, role_id)
+      VALUES ('admin@gmail.com', '$2b$10$bwoSfZaHYiiuqIcIC4dT4Oug4sjnGvG2q4p50lfSkIDj1v.rzYSd2', $1);
+      `,
+      [adminRole.id],
+    );
   }
 }

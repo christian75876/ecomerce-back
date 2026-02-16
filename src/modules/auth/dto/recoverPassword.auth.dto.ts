@@ -4,6 +4,6 @@ import { IsEmail, IsNotEmpty } from 'class-validator';
 export class RecoverPasswordDto {
   @IsEmail()
   @IsNotEmpty()
-  @Transform(({ value }) => String(value).trim())
+  @Transform(({ value }) => String(value).trim().toLowerCase())
   email: string;
 }

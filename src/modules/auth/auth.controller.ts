@@ -12,6 +12,9 @@ import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.auth.dto';
 import { LoginAuthDto } from './dto/login.auth.dto';
 import { RecoverPasswordDto } from './dto/recoverPassword.auth.dto';
+import { VerifyEmailDto } from './dto/verifyEmail.auth.dto';
+import { VerifyRecoverOtpDto } from './dto/verifyRecoverOtp.auth.dto';
+import { ResetPasswordDto } from './dto/resetPassword.auth.dto';
 import { SwaggerLogout, SwaggerRegister } from './docs/auth.swagger';
 
 @Controller('auth')
@@ -42,6 +45,21 @@ export class AuthController {
   async createToken(@Body() body: RecoverPasswordDto) {
     const email = String(body.email).trim();
     return await this.authService.createToken(email);
+  }
+
+  @Post('verify-email')
+  async verifyEmail(@Body() body: VerifyEmailDto) {
+    return await this.authService.verifyEmail(body);
+  }
+
+  @Post('recover-passwords/verify-otp')
+  async verifyRecoveryOtp(@Body() body: VerifyRecoverOtpDto) {
+    return await this.authService.verifyRecoveryOtp(body);
+  }
+
+  @Post('recover-passwords/reset')
+  async resetPassword(@Body() body: ResetPasswordDto) {
+    return await this.authService.resetPassword(body);
   }
 
 }

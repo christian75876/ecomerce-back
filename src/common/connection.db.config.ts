@@ -16,7 +16,7 @@ export class DatabaseConfigService implements TypeOrmOptionsFactory {
       database: envConfig.database,
       autoLoadEntities: true,
       synchronize: true,
-      // dropSchema: true,
+      dropSchema: true,
       logging: true,
       logger: 'advanced-console',
     };

@@ -158,21 +158,16 @@ export class AuthService {
     }
 
     return {
-      statusCode: 201,
       message: emailSent
         ? 'Usuario registrado. Revisa tu correo para verificar la cuenta.'
         : 'Usuario registrado, pero no se pudo enviar el correo de verificacion.',
-      data: {
-        id: user.id,
-        email: user.email,
-        role_id: user.role_id,
-        ...(process.env.NODE_ENV !== 'production' && !emailSent
-          ? { verification_token: verificationToken }
-          : {}),
-      },
-      metadata: {
-        email_delivery: emailSent ? 'sent' : 'failed',
-      },
+      id: user.id,
+      email: user.email,
+      role_id: user.role_id,
+      email_delivery: emailSent ? 'sent' : 'failed',
+      ...(process.env.NODE_ENV !== 'production' && !emailSent
+        ? { verification_token: verificationToken }
+        : {}),
     };
   }
 

@@ -16,5 +16,5 @@ export const EnvConfig = () => ({
   appName: process.env.APP_NAME || 'Ecommerce App',
   emailVerificationUrlBase:
     process.env.EMAIL_VERIFICATION_URL_BASE ||
-    'http://localhost:3000/api/auth/verify-email?token=',
+    'http://localhost:5173/verify-email?token=',
 });

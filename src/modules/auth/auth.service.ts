@@ -173,7 +173,7 @@ export class AuthService {
 
   async verifyEmail({ token }: VerifyEmailDto) {
     const tokenHash = this.hashValue(token);
-    const verificationToken = await this.recoverTokenRepository.findOne({
+    let verificationToken = await this.recoverTokenRepository.findOne({
       where: {
         tokenHash,
         purpose: 'register_verification',
@@ -183,6 +183,22 @@ export class AuthService {
     });
 
     if (!verificationToken) {
+      const existingToken = await this.recoverTokenRepository.findOne({
+        where: {
+          tokenHash,
+          purpose: 'register_verification',
+        },
+      });
+
+      if (existingToken?.usedAt) {
+        const alreadyVerifiedUser = await this.userRepository.findOne({
+          where: { email: existingToken.email },
+        });
+        if (alreadyVerifiedUser?.isEmailVerified) {
+          return { message: 'Email already verified' };
+        }
+      }
+
       throw new BadRequestException('Invalid verification token');
     }
 

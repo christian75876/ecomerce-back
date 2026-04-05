@@ -1,8 +1,12 @@
 import {
   ArrayMinSize,
   IsArray,
+  IsEmail,
   IsInt,
+  IsOptional,
+  IsString,
   IsUUID,
+  MaxLength,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -18,9 +22,33 @@ class CreateOrderItemDto {
   quantity: number;
 }
 
+class CreateOrderCustomerDto {
+  @IsString()
+  @MaxLength(120)
+  firstName: string;
+
+  @IsString()
+  @MaxLength(120)
+  lastName: string;
+
+  @IsEmail()
+  email: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  phone?: string;
+}
+
 export class CreateOrderDto {
+  @IsOptional()
   @IsUUID()
-  customerId: string;
+  customerId?: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CreateOrderCustomerDto)
+  customer?: CreateOrderCustomerDto;
 
   @IsArray()
   @ArrayMinSize(1)

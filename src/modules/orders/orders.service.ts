@@ -9,6 +9,7 @@ import { Order, OrderStatus } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
+import { CustomersService } from '../customers/customers.service';
 
 @Injectable()
 export class OrdersService {
@@ -23,6 +24,7 @@ export class OrdersService {
     @InjectRepository(OrderItem)
     private readonly orderItemsRepository: Repository<OrderItem>,
     private readonly inventoryService: InventoryService,
+    private readonly customersService: CustomersService,
   ) {}
 
   async findAll() {
@@ -40,13 +42,7 @@ export class OrdersService {
   }
 
   async create(createOrderDto: CreateOrderDto) {
-    const customer = await this.customersRepository.findOne({
-      where: { id: createOrderDto.customerId },
-    });
-
-    if (!customer) {
-      throw new BadRequestException('Customer not found');
-    }
+    const customer = await this.resolveCustomer(createOrderDto);
 
     return this.dataSource.transaction(async (manager) => {
       const items = [];
@@ -102,6 +98,34 @@ export class OrdersService {
 
       return this.findOne(savedOrder.id);
     });
+  }
+
+  private async resolveCustomer(createOrderDto: CreateOrderDto) {
+    if (createOrderDto.customerId) {
+      const customer = await this.customersRepository.findOne({
+        where: { id: createOrderDto.customerId },
+      });
+
+      if (!customer) {
+        throw new BadRequestException('Customer not found');
+      }
+
+      return customer;
+    }
+
+    if (!createOrderDto.customer) {
+      throw new BadRequestException('Customer information is required');
+    }
+
+    const existingCustomer = await this.customersService.findByEmail(
+      createOrderDto.customer.email,
+    );
+
+    if (existingCustomer) {
+      return existingCustomer;
+    }
+
+    return this.customersService.create(createOrderDto.customer);
   }
 
   async updateStatus(id: string, updateOrderStatusDto: UpdateOrderStatusDto) {

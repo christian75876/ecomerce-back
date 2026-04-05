@@ -11,6 +11,8 @@ import { InventoryModule } from './modules/inventory/inventory.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { SalesModule } from './modules/sales/sales.module';
 import { OrdersModule } from './modules/orders/orders.module';
+import { ReviewsModule } from './modules/reviews/reviews.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -26,6 +28,8 @@ import { OrdersModule } from './modules/orders/orders.module';
     CustomersModule,
     SalesModule,
     OrdersModule,
+    ReviewsModule,
+    DashboardModule,
   ],
   providers: [
     AppInitializer,

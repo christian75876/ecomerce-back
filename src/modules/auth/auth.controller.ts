@@ -6,8 +6,10 @@ import {
   HttpCode,
   Req,
   Body,
+  Get,
+  UseGuards,
 } from '@nestjs/common';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.auth.dto';
 import { LoginAuthDto } from './dto/login.auth.dto';
@@ -16,6 +18,7 @@ import { VerifyEmailDto } from './dto/verifyEmail.auth.dto';
 import { VerifyRecoverOtpDto } from './dto/verifyRecoverOtp.auth.dto';
 import { ResetPasswordDto } from './dto/resetPassword.auth.dto';
 import { SwaggerLogout, SwaggerRegister } from './docs/auth.swagger';
+import { JwtAuthGuard } from './guards/jwt.auth.guard';
 
 @Controller('auth')
 export class AuthController {
@@ -41,6 +44,15 @@ export class AuthController {
   async loginController(@Body() credentials: LoginAuthDto) {
     return await this.authService.login(credentials);
   }
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  async getAuthenticatedUser(@Req() req: Request & {
+    user: { userId: number };
+  }) {
+    return await this.authService.getAuthenticatedProfile(req.user.userId);
+  }
+
   @Post('RecoverPasswords')
   async createToken(@Body() body: RecoverPasswordDto) {
     const email = String(body.email).trim();

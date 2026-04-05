@@ -107,8 +107,33 @@ export class AuthService {
       email: userData instanceof User && userData.email,
     };
     return {
-      message: 'Here is your token: ',
+      message: 'Login successful',
       token: await this.jwtService.signAsync(payload, { expiresIn: '1h' }),
+      user: {
+        id: userData instanceof User ? userData.id : null,
+        email: userData instanceof User ? userData.email : null,
+        role_id: userData instanceof User ? userData.role_id : null,
+      },
+    };
+  }
+
+  async getAuthenticatedProfile(userId: number) {
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      relations: { role: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('Authenticated user not found');
+    }
+
+    return {
+      id: user.id,
+      email: user.email,
+      role_id: user.role_id,
+      role: user.role?.name ?? null,
+      isEmailVerified: user.isEmailVerified,
+      createdAt: user.createdAt,
     };
   }
 

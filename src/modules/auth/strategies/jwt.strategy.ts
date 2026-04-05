@@ -26,7 +26,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Invalid token');
     }
 
-    const user = await this.userRepository.findOne({ where: { id: userId } });
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      relations: { role: true },
+    });
     if (!user || !user.isEmailVerified) {
       throw new UnauthorizedException('User is not allowed to access');
     }
@@ -34,6 +37,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     return {
       userId: user.id,
       role_id: user.role_id,
+      role: user.role?.name ?? null,
       email: user.email,
     };
   }

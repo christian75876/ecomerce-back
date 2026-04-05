@@ -6,7 +6,6 @@ import { EnvConfig } from './env.config';
 export class DatabaseConfigService implements TypeOrmOptionsFactory {
   createTypeOrmOptions(): TypeOrmModuleOptions {
     const envConfig = EnvConfig();
-    console.log(envConfig);
     return {
       type: 'postgres',
       host: envConfig.host,
@@ -15,9 +14,9 @@ export class DatabaseConfigService implements TypeOrmOptionsFactory {
       password: envConfig.password,
       database: envConfig.database,
       autoLoadEntities: true,
-      synchronize: true,
-      // dropSchema: true,
-      logging: true,
+      synchronize: envConfig.databaseSynchronize,
+      dropSchema: envConfig.databaseDropSchema,
+      logging: envConfig.databaseLogging,
       logger: 'advanced-console',
     };
   }

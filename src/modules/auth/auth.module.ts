@@ -7,6 +7,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { User } from '../users/entities/user.entity';
 import { RecoverToken } from './entities/token.entity';
+import { EmailService } from './email.service';
 
 @Module({
   imports: [
@@ -24,7 +25,7 @@ import { RecoverToken } from './entities/token.entity';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
+  providers: [AuthService, JwtStrategy, EmailService],
   exports: [JwtStrategy],
 })
 export class AuthModule {}

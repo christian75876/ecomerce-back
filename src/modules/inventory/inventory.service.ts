@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import {
   InventoryMovement,
   InventoryMovementType,
@@ -90,26 +90,38 @@ export class InventoryService {
     movementType: InventoryMovementType;
     quantityDelta: number;
     note?: string;
+    manager?: EntityManager;
   }) {
-    const currentStock = await this.getCurrentStock(params.productId);
+    const currentStock = await this.getCurrentStock(
+      params.productId,
+      params.manager,
+    );
     const nextStock = currentStock + params.quantityDelta;
 
     if (nextStock < 0) {
       throw new BadRequestException('Insufficient stock for inventory movement');
     }
 
-    const movement = this.inventoryRepository.create({
+    const inventoryRepository = params.manager
+      ? params.manager.getRepository(InventoryMovement)
+      : this.inventoryRepository;
+
+    const movement = inventoryRepository.create({
       productId: params.productId,
       movementType: params.movementType,
       quantityDelta: params.quantityDelta,
       note: params.note?.trim() || null,
     });
 
-    return this.inventoryRepository.save(movement);
+    return inventoryRepository.save(movement);
   }
 
-  async getCurrentStock(productId: string) {
-    const result = await this.inventoryRepository
+  async getCurrentStock(productId: string, manager?: EntityManager) {
+    const inventoryRepository = manager
+      ? manager.getRepository(InventoryMovement)
+      : this.inventoryRepository;
+
+    const result = await inventoryRepository
       .createQueryBuilder('movement')
       .select('COALESCE(SUM(movement.quantityDelta), 0)', 'stock')
       .where('movement.productId = :productId', { productId })

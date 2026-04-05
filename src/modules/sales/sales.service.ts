@@ -41,11 +41,12 @@ export class SalesService {
 
   async create(createSaleDto: CreateSaleDto) {
     return this.dataSource.transaction(async (manager) => {
+      const productsRepository = manager.getRepository(Product);
       const items = [];
       let total = 0;
 
       for (const item of createSaleDto.items) {
-        const product = await this.productsRepository.findOne({
+        const product = await productsRepository.findOne({
           where: { id: item.productId, isActive: true },
         });
 
@@ -85,6 +86,7 @@ export class SalesService {
           movementType: InventoryMovementType.SALE,
           quantityDelta: -item.quantity,
           note: `POS sale ${savedSale.id}`,
+          manager,
         });
       }
 

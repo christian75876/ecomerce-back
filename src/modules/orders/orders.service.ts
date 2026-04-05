@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { Customer } from '../customers/entities/customer.entity';
 import { Product } from '../products/entities/product.entity';
 import { InventoryService } from '../inventory/inventory.service';
@@ -9,7 +9,6 @@ import { Order, OrderStatus } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
-import { CustomersService } from '../customers/customers.service';
 
 @Injectable()
 export class OrdersService {
@@ -24,7 +23,6 @@ export class OrdersService {
     @InjectRepository(OrderItem)
     private readonly orderItemsRepository: Repository<OrderItem>,
     private readonly inventoryService: InventoryService,
-    private readonly customersService: CustomersService,
   ) {}
 
   async findAll() {
@@ -42,14 +40,14 @@ export class OrdersService {
   }
 
   async create(createOrderDto: CreateOrderDto) {
-    const customer = await this.resolveCustomer(createOrderDto);
-
     return this.dataSource.transaction(async (manager) => {
+      const customer = await this.resolveCustomer(createOrderDto, manager);
+      const productsRepository = manager.getRepository(Product);
       const items = [];
       let total = 0;
 
       for (const item of createOrderDto.items) {
-        const product = await this.productsRepository.findOne({
+        const product = await productsRepository.findOne({
           where: { id: item.productId, isActive: true },
         });
 
@@ -93,6 +91,7 @@ export class OrdersService {
           movementType: InventoryMovementType.ORDER,
           quantityDelta: -item.quantity,
           note: `Order ${savedOrder.id}`,
+          manager,
         });
       }
 
@@ -100,9 +99,14 @@ export class OrdersService {
     });
   }
 
-  private async resolveCustomer(createOrderDto: CreateOrderDto) {
+  private async resolveCustomer(
+    createOrderDto: CreateOrderDto,
+    manager: EntityManager,
+  ) {
+    const customersRepository = manager.getRepository(Customer);
+
     if (createOrderDto.customerId) {
-      const customer = await this.customersRepository.findOne({
+      const customer = await customersRepository.findOne({
         where: { id: createOrderDto.customerId },
       });
 
@@ -117,15 +121,23 @@ export class OrdersService {
       throw new BadRequestException('Customer information is required');
     }
 
-    const existingCustomer = await this.customersService.findByEmail(
-      createOrderDto.customer.email,
-    );
+    const normalizedEmail = createOrderDto.customer.email.trim().toLowerCase();
+    const existingCustomer = await customersRepository.findOne({
+      where: { email: normalizedEmail },
+    });
 
     if (existingCustomer) {
       return existingCustomer;
     }
 
-    return this.customersService.create(createOrderDto.customer);
+    const customer = customersRepository.create({
+      firstName: createOrderDto.customer.firstName.trim(),
+      lastName: createOrderDto.customer.lastName.trim(),
+      email: normalizedEmail,
+      phone: createOrderDto.customer.phone?.trim() || null,
+    });
+
+    return customersRepository.save(customer);
   }
 
   async updateStatus(id: string, updateOrderStatusDto: UpdateOrderStatusDto) {

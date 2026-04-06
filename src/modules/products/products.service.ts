@@ -10,6 +10,10 @@ import { Category } from '../categories/entities/category.entity';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { UpdateProductStatusDto } from './dto/update-product-status.dto';
+import { Store } from '../stores/entities/store.entity';
+import { InventoryService } from '../inventory/inventory.service';
+import { InventoryMovementType } from '../inventory/entities/inventory-movement.entity';
+import { Supplier } from '../suppliers/entities/supplier.entity';
 
 @Injectable()
 export class ProductsService {
@@ -18,11 +22,17 @@ export class ProductsService {
     private readonly productsRepository: Repository<Product>,
     @InjectRepository(Category)
     private readonly categoriesRepository: Repository<Category>,
+    @InjectRepository(Store)
+    private readonly storesRepository: Repository<Store>,
+    @InjectRepository(Supplier)
+    private readonly suppliersRepository: Repository<Supplier>,
+    private readonly inventoryService: InventoryService,
   ) {}
 
   async findAll(filters: {
     search?: string;
     categoryId?: string;
+    storeId?: string;
     active?: boolean;
   }) {
     const where: Record<string, unknown> = {};
@@ -35,16 +45,26 @@ export class ProductsService {
       where.categoryId = filters.categoryId;
     }
 
+    if (filters.storeId) {
+      where.storeId = filters.storeId;
+    }
+
     if (typeof filters.active === 'boolean') {
       where.isActive = filters.active;
     }
 
-    return this.productsRepository.find({
+    const products = await this.productsRepository.find({
       where,
       order: {
         createdAt: 'DESC',
       },
     });
+
+    if (filters.active) {
+      return products.filter((product) => !product.store || product.store.isActive);
+    }
+
+    return products;
   }
 
   async findOne(id: string) {
@@ -61,19 +81,43 @@ export class ProductsService {
 
   async create(createProductDto: CreateProductDto) {
     await this.ensureCategoryExists(createProductDto.categoryId);
+    if (createProductDto.storeId) {
+      await this.ensureStoreExists(createProductDto.storeId);
+    }
+    if (createProductDto.supplierId) {
+      await this.ensureSupplierExists(createProductDto.supplierId);
+    }
     await this.ensureUniqueSku(createProductDto.sku);
+    const initialStock = Number(createProductDto.initialStock ?? 0);
 
-    const product = this.productsRepository.create({
-      ...createProductDto,
-      name: createProductDto.name.trim(),
-      description: createProductDto.description.trim(),
-      sku: createProductDto.sku.trim().toUpperCase(),
-      imageUrl: createProductDto.imageUrl?.trim() || null,
-      showStock: createProductDto.showStock ?? false,
-      isActive: createProductDto.isActive ?? true,
+    return this.productsRepository.manager.transaction(async (manager) => {
+      const product = manager.getRepository(Product).create({
+        ...createProductDto,
+        name: createProductDto.name.trim(),
+        description: createProductDto.description.trim(),
+        sku: createProductDto.sku.trim().toUpperCase(),
+        imageUrl: createProductDto.imageUrl?.trim() || null,
+        cost: typeof createProductDto.cost === 'number' ? createProductDto.cost : null,
+        showStock: createProductDto.showStock ?? false,
+        isActive: createProductDto.isActive ?? true,
+        storeId: createProductDto.storeId ?? null,
+        supplierId: createProductDto.supplierId ?? null,
+      });
+
+      const savedProduct = await manager.getRepository(Product).save(product);
+
+      if (initialStock > 0) {
+        await this.inventoryService.createSystemMovement({
+          productId: savedProduct.id,
+          movementType: InventoryMovementType.IN,
+          quantityDelta: initialStock,
+          note: 'Initial stock on product creation',
+          manager,
+        });
+      }
+
+      return savedProduct;
     });
-
-    return this.productsRepository.save(product);
   }
 
   async update(id: string, updateProductDto: UpdateProductDto) {
@@ -81,6 +125,13 @@ export class ProductsService {
 
     if (updateProductDto.categoryId) {
       await this.ensureCategoryExists(updateProductDto.categoryId);
+    }
+
+    if (updateProductDto.storeId) {
+      await this.ensureStoreExists(updateProductDto.storeId);
+    }
+    if (updateProductDto.supplierId) {
+      await this.ensureSupplierExists(updateProductDto.supplierId);
     }
 
     if (updateProductDto.sku) {
@@ -93,6 +144,12 @@ export class ProductsService {
       description:
         updateProductDto.description?.trim() ?? product.description,
       sku: updateProductDto.sku?.trim().toUpperCase() ?? product.sku,
+      storeId: updateProductDto.storeId ?? product.storeId,
+      supplierId: updateProductDto.supplierId ?? product.supplierId,
+      cost:
+        typeof updateProductDto.cost === 'number'
+          ? updateProductDto.cost
+          : product.cost,
       imageUrl:
         typeof updateProductDto.imageUrl === 'string'
           ? updateProductDto.imageUrl.trim() || null
@@ -115,6 +172,26 @@ export class ProductsService {
 
     if (!category) {
       throw new NotFoundException('Category not found');
+    }
+  }
+
+  private async ensureStoreExists(storeId: string) {
+    const store = await this.storesRepository.findOne({
+      where: { id: storeId },
+    });
+
+    if (!store) {
+      throw new NotFoundException('Store not found');
+    }
+  }
+
+  private async ensureSupplierExists(supplierId: string) {
+    const supplier = await this.suppliersRepository.findOne({
+      where: { id: supplierId },
+    });
+
+    if (!supplier) {
+      throw new NotFoundException('Supplier not found');
     }
   }
 

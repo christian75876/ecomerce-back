@@ -4,9 +4,13 @@ import { DataSource, Repository } from 'typeorm';
 import { Product } from '../products/entities/product.entity';
 import { InventoryService } from '../inventory/inventory.service';
 import { InventoryMovementType } from '../inventory/entities/inventory-movement.entity';
-import { Sale } from './entities/sale.entity';
+import { Sale, SalePaymentMethod } from './entities/sale.entity';
 import { SaleItem } from './entities/sale-item.entity';
 import { CreateSaleDto } from './dto/create-sale.dto';
+import { Customer } from '../customers/entities/customer.entity';
+import { CustomersService } from '../customers/customers.service';
+import { CashService } from '../cash/cash.service';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class SalesService {
@@ -14,11 +18,16 @@ export class SalesService {
     private readonly dataSource: DataSource,
     @InjectRepository(Product)
     private readonly productsRepository: Repository<Product>,
+    @InjectRepository(Customer)
+    private readonly customersRepository: Repository<Customer>,
     @InjectRepository(Sale)
     private readonly salesRepository: Repository<Sale>,
     @InjectRepository(SaleItem)
     private readonly saleItemsRepository: Repository<SaleItem>,
     private readonly inventoryService: InventoryService,
+    private readonly customersService: CustomersService,
+    private readonly cashService: CashService,
+    private readonly auditService: AuditService,
   ) {}
 
   async findAll() {
@@ -42,8 +51,20 @@ export class SalesService {
   async create(createSaleDto: CreateSaleDto) {
     return this.dataSource.transaction(async (manager) => {
       const productsRepository = manager.getRepository(Product);
+      const customersRepository = manager.getRepository(Customer);
       const items = [];
       let total = 0;
+      const paymentMethod = createSaleDto.paymentMethod ?? SalePaymentMethod.CASH;
+      const customer =
+        createSaleDto.customerId
+          ? await customersRepository.findOne({
+              where: { id: createSaleDto.customerId },
+            })
+          : null;
+
+      if (paymentMethod === SalePaymentMethod.CREDIT && !customer) {
+        throw new BadRequestException('Credit sale requires a customer');
+      }
 
       for (const item of createSaleDto.items) {
         const product = await productsRepository.findOne({
@@ -72,7 +93,13 @@ export class SalesService {
         });
       }
 
-      const sale = manager.create(Sale, { total });
+      const sale = manager.create(Sale, {
+        total,
+        paymentMethod,
+        customerId: customer?.id ?? null,
+        storeId: createSaleDto.storeId ?? null,
+        cashSessionId: createSaleDto.cashSessionId ?? null,
+      });
       const savedSale = await manager.save(sale);
 
       for (const item of items) {
@@ -89,6 +116,24 @@ export class SalesService {
           manager,
         });
       }
+
+      if (paymentMethod === SalePaymentMethod.CREDIT && customer) {
+        await this.customersService.registerCreditSale(customer.id, total, savedSale.id);
+      }
+
+      if (paymentMethod === SalePaymentMethod.CASH && createSaleDto.cashSessionId) {
+        await this.cashService.registerCashSale(createSaleDto.cashSessionId, total);
+      }
+
+      await this.auditService.log({
+        action:
+          paymentMethod === SalePaymentMethod.CREDIT
+            ? 'SALE_CREDIT_CREATED'
+            : 'SALE_CREATED',
+        entity: 'sale',
+        referenceId: savedSale.id,
+        detail: `Sale total ${total}`,
+      });
 
       return this.findOne(savedSale.id);
     });

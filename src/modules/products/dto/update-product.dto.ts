@@ -35,6 +35,20 @@ export class UpdateProductDto {
   categoryId?: string;
 
   @IsOptional()
+  @IsUUID()
+  storeId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  supplierId?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  cost?: number;
+
+  @IsOptional()
   @IsString()
   @MaxLength(500)
   imageUrl?: string;

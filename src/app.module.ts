@@ -13,6 +13,11 @@ import { SalesModule } from './modules/sales/sales.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { StoresModule } from './modules/stores/stores.module';
+import { SuppliersModule } from './modules/suppliers/suppliers.module';
+import { PurchasesModule } from './modules/purchases/purchases.module';
+import { CashModule } from './modules/cash/cash.module';
+import { AuditModule } from './modules/audit/audit.module';
 
 @Module({
   imports: [
@@ -30,6 +35,11 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
     OrdersModule,
     ReviewsModule,
     DashboardModule,
+    StoresModule,
+    SuppliersModule,
+    PurchasesModule,
+    CashModule,
+    AuditModule,
   ],
   providers: [
     AppInitializer,

@@ -8,10 +8,12 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { User } from '../users/entities/user.entity';
 import { RecoverToken } from './entities/token.entity';
 import { EmailService } from './email.service';
+import { Role } from '../users/entities/role.entity';
+import { Customer } from '../customers/entities/customer.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, RecoverToken]),
+    TypeOrmModule.forFeature([User, Role, Customer, RecoverToken]),
     ConfigModule.forRoot(),
     JwtModule.registerAsync({
       imports: [ConfigModule],

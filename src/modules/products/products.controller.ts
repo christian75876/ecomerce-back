@@ -22,11 +22,13 @@ export class ProductsController {
   async findAll(
     @Query('search') search?: string,
     @Query('categoryId') categoryId?: string,
+    @Query('storeId') storeId?: string,
     @Query('active') active?: string,
   ) {
     return this.productsService.findAll({
       search,
       categoryId,
+      storeId,
       active:
         typeof active === 'string'
           ? active.toLowerCase() === 'true'

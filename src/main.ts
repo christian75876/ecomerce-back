@@ -12,6 +12,7 @@ import * as express from 'express';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const port = Number(process.env.PORT || 3000);
   const uploadsPath = join(process.cwd(), 'uploads');
   const reviewUploadsPath = join(uploadsPath, 'reviews');
 
@@ -26,7 +27,10 @@ async function bootstrap() {
   app.useGlobalPipes(globalValidationPipes);
   app.useGlobalInterceptors(new ResponseInterceptor());
   app.useGlobalFilters(new HttpErrorFilter());
-  await app.listen(process.env.PORT);
-  logger.log(`App running on port ${process.env.PORT}`);
+  await app.listen(port, '0.0.0.0');
+  logger.log(`App running on port ${port}`);
 }
-bootstrap();
+bootstrap().catch((error) => {
+  logger.error('Failed to bootstrap application', error);
+  process.exit(1);
+});

@@ -12,6 +12,7 @@ import {
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.auth.dto';
+import { RegisterCustomerDto } from './dto/register-customer.auth.dto';
 import { LoginAuthDto } from './dto/login.auth.dto';
 import { RecoverPasswordDto } from './dto/recoverPassword.auth.dto';
 import { VerifyEmailDto } from './dto/verifyEmail.auth.dto';
@@ -38,6 +39,11 @@ export class AuthController {
   @Post('register')
   async registerController(@Body() credentials: RegisterDto) {
     return await this.authService.register(credentials);
+  }
+
+  @Post('register-customer')
+  async registerCustomerController(@Body() payload: RegisterCustomerDto) {
+    return await this.authService.registerCustomer(payload);
   }
 
   @Post('login')

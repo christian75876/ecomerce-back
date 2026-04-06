@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -8,12 +9,19 @@ import { ILike, Repository } from 'typeorm';
 import { Customer } from './entities/customer.entity';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
+import {
+  CustomerLedgerEntry,
+  CustomerLedgerEntryType,
+} from './entities/customer-ledger-entry.entity';
+import { RegisterCustomerPaymentDto } from './dto/register-customer-payment.dto';
 
 @Injectable()
 export class CustomersService {
   constructor(
     @InjectRepository(Customer)
     private readonly customersRepository: Repository<Customer>,
+    @InjectRepository(CustomerLedgerEntry)
+    private readonly ledgerRepository: Repository<CustomerLedgerEntry>,
   ) {}
 
   async findAll(search?: string) {
@@ -62,6 +70,9 @@ export class CustomersService {
       lastName: createCustomerDto.lastName.trim(),
       email: normalizedEmail,
       phone: createCustomerDto.phone?.trim() || null,
+      creditEnabled: createCustomerDto.creditEnabled ?? false,
+      creditLimit: createCustomerDto.creditLimit ?? null,
+      creditBalance: 0,
     });
 
     return this.customersRepository.save(customer);
@@ -90,7 +101,73 @@ export class CustomersService {
     if (typeof updateCustomerDto.phone === 'string') {
       customer.phone = updateCustomerDto.phone.trim() || null;
     }
+    if (typeof updateCustomerDto.creditEnabled === 'boolean') {
+      customer.creditEnabled = updateCustomerDto.creditEnabled;
+    }
+    if (typeof updateCustomerDto.creditLimit === 'number') {
+      customer.creditLimit = updateCustomerDto.creditLimit;
+    }
 
     return this.customersRepository.save(customer);
+  }
+
+  async getCreditStatus(id: string) {
+    const customer = await this.findOne(id);
+    const ledger = await this.ledgerRepository.find({
+      where: { customerId: id },
+      order: { createdAt: 'DESC' },
+    });
+
+    return { customer, ledger };
+  }
+
+  async registerPayment(id: string, payload: RegisterCustomerPaymentDto) {
+    const customer = await this.findOne(id);
+
+    if (payload.amount > Number(customer.creditBalance)) {
+      throw new BadRequestException('Payment exceeds current customer balance');
+    }
+
+    customer.creditBalance = Number(customer.creditBalance) - payload.amount;
+    await this.customersRepository.save(customer);
+
+    const entry = this.ledgerRepository.create({
+      customerId: customer.id,
+      type: CustomerLedgerEntryType.PAYMENT,
+      amount: -payload.amount,
+      note: payload.note?.trim() || null,
+    });
+    await this.ledgerRepository.save(entry);
+
+    return this.getCreditStatus(id);
+  }
+
+  async registerCreditSale(customerId: string, amount: number, referenceId?: string) {
+    const customer = await this.findOne(customerId);
+
+    if (!customer.creditEnabled) {
+      throw new BadRequestException('Customer credit is disabled');
+    }
+
+    const creditLimit = Number(customer.creditLimit ?? 0);
+    const nextBalance = Number(customer.creditBalance) + amount;
+
+    if (creditLimit > 0 && nextBalance > creditLimit) {
+      throw new BadRequestException('Customer credit limit exceeded');
+    }
+
+    customer.creditBalance = nextBalance;
+    await this.customersRepository.save(customer);
+
+    const entry = this.ledgerRepository.create({
+      customerId,
+      type: CustomerLedgerEntryType.CREDIT_SALE,
+      amount,
+      note: 'Credit sale',
+      referenceId: referenceId ?? null,
+    });
+    await this.ledgerRepository.save(entry);
+
+    return customer;
   }
 }

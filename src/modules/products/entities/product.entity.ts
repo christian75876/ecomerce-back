@@ -10,6 +10,8 @@ import {
 } from 'typeorm';
 import { Category } from '../../categories/entities/category.entity';
 import { InventoryMovement } from '../../inventory/entities/inventory-movement.entity';
+import { Store } from '../../stores/entities/store.entity';
+import { Supplier } from '../../suppliers/entities/supplier.entity';
 
 @Entity('products')
 export class Product {
@@ -28,6 +30,9 @@ export class Product {
   @Column({ type: 'decimal', precision: 12, scale: 2 })
   price: number;
 
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  cost: number | null;
+
   @Column({ name: 'image_url', type: 'varchar', length: 500, nullable: true })
   imageUrl: string | null;
 
@@ -40,11 +45,28 @@ export class Product {
   @Column({ name: 'category_id', type: 'uuid' })
   categoryId: string;
 
+  @Column({ name: 'store_id', type: 'uuid', nullable: true })
+  storeId: string | null;
+
+  @Column({ name: 'supplier_id', type: 'uuid', nullable: true })
+  supplierId: string | null;
+
   @ManyToOne(() => Category, (category) => category.products, {
     eager: true,
   })
   @JoinColumn({ name: 'category_id' })
   category: Category;
+
+  @ManyToOne(() => Store, (store) => store.products, {
+    eager: true,
+    nullable: true,
+  })
+  @JoinColumn({ name: 'store_id' })
+  store: Store | null;
+
+  @ManyToOne(() => Supplier, { eager: true, nullable: true })
+  @JoinColumn({ name: 'supplier_id' })
+  supplier: Supplier | null;
 
   @OneToMany(
     () => InventoryMovement,

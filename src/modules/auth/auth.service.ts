@@ -8,8 +8,11 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { User } from '../users/entities/user.entity';
+import { Role } from '../users/entities/role.entity';
+import { Customer } from '../customers/entities/customer.entity';
 import { IsNull, Repository } from 'typeorm';
 import { RegisterDto } from './dto/register.auth.dto';
+import { RegisterCustomerDto } from './dto/register-customer.auth.dto';
 import { LoginAuthDto } from './dto/login.auth.dto';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
@@ -29,6 +32,9 @@ export class AuthService {
 
   constructor(
     @InjectRepository(User) private readonly userRepository: Repository<User>,
+    @InjectRepository(Role) private readonly roleRepository: Repository<Role>,
+    @InjectRepository(Customer)
+    private readonly customerRepository: Repository<Customer>,
     private jwtService: JwtService,
     @InjectRepository(RecoverToken)
     private readonly recoverTokenRepository: Repository<RecoverToken>,
@@ -99,20 +105,28 @@ export class AuthService {
 
   async login({ email, password }: LoginAuthDto) {
     const userData = await this.checkCredentials(email, password);
+    const user =
+      userData instanceof User
+        ? await this.userRepository.findOne({
+            where: { id: userData.id },
+            relations: { role: true },
+          })
+        : null;
     const now = Math.floor(Date.now() / 1000);
     const payload = {
-      sub: userData instanceof User && userData.id,
+      sub: user?.id ?? null,
       iat: now,
-      role_id: userData instanceof User && userData.role_id,
-      email: userData instanceof User && userData.email,
+      role_id: user?.role_id ?? null,
+      email: user?.email ?? null,
     };
     return {
       message: 'Login successful',
       token: await this.jwtService.signAsync(payload, { expiresIn: '1h' }),
       user: {
-        id: userData instanceof User ? userData.id : null,
-        email: userData instanceof User ? userData.email : null,
-        role_id: userData instanceof User ? userData.role_id : null,
+        id: user?.id ?? null,
+        email: user?.email ?? null,
+        role_id: user?.role_id ?? null,
+        role: user?.role?.name ?? null,
       },
     };
   }
@@ -193,6 +207,71 @@ export class AuthService {
       ...(process.env.NODE_ENV !== 'production' && !emailSent
         ? { verification_token: verificationToken }
         : {}),
+    };
+  }
+
+  async registerCustomer({
+    name,
+    email,
+    password,
+    phone,
+  }: RegisterCustomerDto) {
+    const normalizedEmail = await this.checkDoesEmailExist(email);
+    const buyerRole = await this.roleRepository.findOne({
+      where: { name: 'buyer' },
+    });
+
+    if (!buyerRole) {
+      throw new NotFoundException('Buyer role is not configured');
+    }
+
+    const { user, customer } =
+      await this.userRepository.manager.transaction(async (em) => {
+        const hashedPass = await bcrypt.hash(password, bcrypt.genSaltSync(10));
+        const user = em.create(User, {
+          role_id: buyerRole.id,
+          email: normalizedEmail,
+          password: hashedPass,
+          isEmailVerified: true,
+        });
+        await em.save(user);
+
+        const [firstName, ...restName] = name.trim().split(/\s+/);
+        const customer = em.create(Customer, {
+          firstName,
+          lastName: restName.join(' ') || 'Cliente',
+          email: normalizedEmail,
+          phone: phone?.trim() || null,
+          userId: user.id,
+        });
+        await em.save(customer);
+
+        return { user, customer };
+      });
+
+    const now = Math.floor(Date.now() / 1000);
+    const payload = {
+      sub: user.id,
+      iat: now,
+      role_id: buyerRole.id,
+      email: user.email,
+    };
+
+    return {
+      message: 'Cliente registrado correctamente',
+      token: await this.jwtService.signAsync(payload, { expiresIn: '1h' }),
+      user: {
+        id: user.id,
+        email: user.email,
+        role_id: user.role_id,
+        role: buyerRole.name,
+      },
+      customer: {
+        id: customer.id,
+        firstName: customer.firstName,
+        lastName: customer.lastName,
+        phone: customer.phone,
+      },
     };
   }
 

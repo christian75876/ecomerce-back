@@ -8,7 +8,7 @@ import { Supplier } from '../suppliers/entities/supplier.entity';
 import { Store } from '../stores/entities/store.entity';
 import { Product } from '../products/entities/product.entity';
 import { InventoryService } from '../inventory/inventory.service';
-import { InventoryMovementType } from '../inventory/entities/inventory-movement.entity';
+import { InventoryReferenceType } from '../inventory/entities/inventory-batch-allocation.entity';
 
 @Injectable()
 export class PurchasesService {
@@ -80,11 +80,19 @@ export class PurchasesService {
         const lineTotal = Number(item.unitCost) * item.quantity;
         total += lineTotal;
 
+        if (product.isPerishable && !item.expiresAt) {
+          throw new BadRequestException(
+            `Product ${product.name} requires expiration date`,
+          );
+        }
+
         items.push({
           productId: product.id,
           quantity: item.quantity,
           unitCost: Number(item.unitCost),
           lineTotal,
+          expiresAt: item.expiresAt ? new Date(item.expiresAt) : null,
+          batchCode: item.batchCode?.trim() || null,
         });
       }
 
@@ -108,13 +116,22 @@ export class PurchasesService {
           purchaseId: savedPurchase.id,
           ...item,
         });
-        await manager.getRepository(PurchaseItem).save(purchaseItem);
-        await this.inventoryService.createSystemMovement({
+        const savedPurchaseItem = await manager
+          .getRepository(PurchaseItem)
+          .save(purchaseItem as unknown as PurchaseItem);
+        await this.inventoryService.createSystemBatchEntry({
           productId: item.productId,
-          movementType: InventoryMovementType.IN,
-          quantityDelta: item.quantity,
+          storeId: store.id,
+          supplierId: supplier.id,
+          purchaseId: savedPurchase.id,
+          purchaseItemId: savedPurchaseItem.id,
+          quantity: item.quantity,
+          unitCost: item.unitCost,
+          expiresAt: item.expiresAt,
+          batchCode: item.batchCode,
           note: `Purchase ${savedPurchase.id}`,
           manager,
+          referenceType: InventoryReferenceType.PURCHASE,
         });
       }
 

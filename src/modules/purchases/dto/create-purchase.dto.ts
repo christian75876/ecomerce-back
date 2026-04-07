@@ -24,6 +24,15 @@ class CreatePurchaseItemDto {
   @Type(() => Number)
   @Min(0)
   unitCost: number;
+
+  @IsOptional()
+  @IsDateString()
+  expiresAt?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  batchCode?: string;
 }
 
 export class CreatePurchaseDto {

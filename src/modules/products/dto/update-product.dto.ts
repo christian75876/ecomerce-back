@@ -1,4 +1,5 @@
 import {
+  IsDateString,
   IsBoolean,
   IsNumber,
   IsOptional,
@@ -60,4 +61,16 @@ export class UpdateProductDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isPerishable?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  trackBatches?: boolean;
+
+  @IsOptional()
+  @IsDateString()
+  initialExpiresAt?: string;
 }

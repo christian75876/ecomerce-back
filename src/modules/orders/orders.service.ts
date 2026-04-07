@@ -4,11 +4,11 @@ import { DataSource, EntityManager, Repository } from 'typeorm';
 import { Customer } from '../customers/entities/customer.entity';
 import { Product } from '../products/entities/product.entity';
 import { InventoryService } from '../inventory/inventory.service';
-import { InventoryMovementType } from '../inventory/entities/inventory-movement.entity';
 import { Order, OrderStatus } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
+import { InventoryReferenceType } from '../inventory/entities/inventory-batch-allocation.entity';
 
 @Injectable()
 export class OrdersService {
@@ -31,11 +31,49 @@ export class OrdersService {
     });
   }
 
+  async findMine(userId: number) {
+    const customer = await this.customersRepository.findOne({
+      where: { userId },
+    });
+
+    if (!customer) {
+      return [];
+    }
+
+    return this.ordersRepository.find({
+      where: { customerId: customer.id },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
   async findOne(id: string) {
     const order = await this.ordersRepository.findOne({ where: { id } });
     if (!order) {
       throw new NotFoundException('Order not found');
     }
+    return order;
+  }
+
+  async findMyOne(id: string, userId: number) {
+    const customer = await this.customersRepository.findOne({
+      where: { userId },
+    });
+
+    if (!customer) {
+      throw new NotFoundException('Order not found');
+    }
+
+    const order = await this.ordersRepository.findOne({
+      where: {
+        id,
+        customerId: customer.id,
+      },
+    });
+
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+
     return order;
   }
 
@@ -86,10 +124,12 @@ export class OrdersService {
           ...item,
         });
         await manager.save(orderItem);
-        await this.inventoryService.createSystemMovement({
+        await this.inventoryService.consumeStock({
           productId: item.productId,
-          movementType: InventoryMovementType.ORDER,
-          quantityDelta: -item.quantity,
+          quantity: item.quantity,
+          referenceType: InventoryReferenceType.ORDER,
+          referenceId: savedOrder.id,
+          referenceItemId: orderItem.id,
           note: `Order ${savedOrder.id}`,
           manager,
         });
@@ -148,14 +188,12 @@ export class OrdersService {
       updateOrderStatusDto.status === OrderStatus.CANCELLED &&
       order.status !== OrderStatus.CANCELLED
     ) {
-      for (const item of order.items) {
-        await this.inventoryService.createSystemMovement({
-          productId: item.productId,
-          movementType: InventoryMovementType.ORDER_CANCEL,
-          quantityDelta: item.quantity,
-          note: `Order cancellation ${order.id}`,
-        });
-      }
+      await this.inventoryService.restoreStockFromAllocations({
+        referenceType: InventoryReferenceType.ORDER,
+        referenceId: order.id,
+        note: `Order cancellation ${order.id}`,
+        restoredReferenceType: InventoryReferenceType.ORDER_CANCEL,
+      });
     }
 
     order.status = updateOrderStatusDto.status;

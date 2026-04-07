@@ -3,16 +3,12 @@ import {
   IsInt,
   IsNotEmpty,
   IsString,
-  IsUUID,
   Max,
   MaxLength,
   Min,
 } from 'class-validator';
 
 export class CreateReviewDto {
-  @IsUUID()
-  customerId: string;
-
   @Type(() => Number)
   @IsInt()
   @Min(1)

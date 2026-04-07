@@ -7,6 +7,8 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { Product } from '../../products/entities/product.entity';
+import { InventoryBatch } from './inventory-batch.entity';
+import { InventoryReferenceType } from './inventory-batch-allocation.entity';
 
 export enum InventoryMovementType {
   IN = 'IN',
@@ -31,6 +33,16 @@ export class InventoryMovement {
   @JoinColumn({ name: 'product_id' })
   product: Product;
 
+  @Column({ name: 'batch_id', type: 'uuid', nullable: true })
+  batchId: string | null;
+
+  @ManyToOne(() => InventoryBatch, (batch) => batch.movements, {
+    eager: true,
+    nullable: true,
+  })
+  @JoinColumn({ name: 'batch_id' })
+  batch: InventoryBatch | null;
+
   @Column({
     name: 'movement_type',
     type: 'enum',
@@ -40,6 +52,26 @@ export class InventoryMovement {
 
   @Column({ name: 'quantity_delta', type: 'int' })
   quantityDelta: number;
+
+  @Column({
+    name: 'reference_type',
+    type: 'enum',
+    enum: InventoryReferenceType,
+    nullable: true,
+  })
+  referenceType: InventoryReferenceType | null;
+
+  @Column({ name: 'reference_id', type: 'uuid', nullable: true })
+  referenceId: string | null;
+
+  @Column({
+    name: 'unit_cost_snapshot',
+    type: 'decimal',
+    precision: 12,
+    scale: 2,
+    nullable: true,
+  })
+  unitCostSnapshot: number | null;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
   note: string | null;

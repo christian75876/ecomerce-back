@@ -25,4 +25,8 @@ export class CreateInventoryMovementDto {
   @IsString()
   @MaxLength(255)
   note?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  quantityDeltaOverride?: number;
 }

@@ -3,7 +3,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { Product } from '../products/entities/product.entity';
 import { InventoryService } from '../inventory/inventory.service';
-import { InventoryMovementType } from '../inventory/entities/inventory-movement.entity';
 import { Sale, SalePaymentMethod } from './entities/sale.entity';
 import { SaleItem } from './entities/sale-item.entity';
 import { CreateSaleDto } from './dto/create-sale.dto';
@@ -11,6 +10,7 @@ import { Customer } from '../customers/entities/customer.entity';
 import { CustomersService } from '../customers/customers.service';
 import { CashService } from '../cash/cash.service';
 import { AuditService } from '../audit/audit.service';
+import { InventoryReferenceType } from '../inventory/entities/inventory-batch-allocation.entity';
 
 @Injectable()
 export class SalesService {
@@ -108,10 +108,12 @@ export class SalesService {
           ...item,
         });
         await manager.save(saleItem);
-        await this.inventoryService.createSystemMovement({
+        await this.inventoryService.consumeStock({
           productId: item.productId,
-          movementType: InventoryMovementType.SALE,
-          quantityDelta: -item.quantity,
+          quantity: item.quantity,
+          referenceType: InventoryReferenceType.SALE,
+          referenceId: savedSale.id,
+          referenceItemId: saleItem.id,
           note: `POS sale ${savedSale.id}`,
           manager,
         });

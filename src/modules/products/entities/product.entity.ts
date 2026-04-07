@@ -12,6 +12,7 @@ import { Category } from '../../categories/entities/category.entity';
 import { InventoryMovement } from '../../inventory/entities/inventory-movement.entity';
 import { Store } from '../../stores/entities/store.entity';
 import { Supplier } from '../../suppliers/entities/supplier.entity';
+import { InventoryBatch } from '../../inventory/entities/inventory-batch.entity';
 
 @Entity('products')
 export class Product {
@@ -41,6 +42,12 @@ export class Product {
 
   @Column({ name: 'show_stock', type: 'boolean', default: false })
   showStock: boolean;
+
+  @Column({ name: 'is_perishable', type: 'boolean', default: false })
+  isPerishable: boolean;
+
+  @Column({ name: 'track_batches', type: 'boolean', default: true })
+  trackBatches: boolean;
 
   @Column({ name: 'category_id', type: 'uuid' })
   categoryId: string;
@@ -73,6 +80,9 @@ export class Product {
     (inventoryMovement) => inventoryMovement.product,
   )
   inventoryMovements: InventoryMovement[];
+
+  @OneToMany(() => InventoryBatch, (inventoryBatch) => inventoryBatch.product)
+  inventoryBatches: InventoryBatch[];
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;

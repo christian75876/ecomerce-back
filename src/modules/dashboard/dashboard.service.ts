@@ -165,6 +165,7 @@ export class DashboardService {
 
     const filteredPurchases = purchases.filter(
       (purchase) =>
+        purchase.status !== 'CANCELLED' &&
         (!query.storeId || purchase.storeId === query.storeId) &&
         isWithinRange(purchase.purchaseDate),
     );
@@ -490,7 +491,9 @@ export class DashboardService {
     >();
 
     for (const purchase of purchases.filter(
-      (item) => !query.storeId || item.storeId === query.storeId,
+      (item) =>
+        item.status !== 'CANCELLED' &&
+        (!query.storeId || item.storeId === query.storeId),
     )) {
       const current = supplierDebtMap.get(purchase.supplierId) ?? {
         supplierId: purchase.supplierId,

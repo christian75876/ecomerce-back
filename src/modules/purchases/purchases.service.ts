@@ -135,7 +135,7 @@ export class PurchasesService {
         });
       }
 
-      return this.findOne(savedPurchase.id);
+      return savedPurchase;
     });
   }
 }

@@ -8,6 +8,7 @@ import { ILike, Repository } from 'typeorm';
 import { Supplier } from './entities/supplier.entity';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { UpdateSupplierDto } from './dto/update-supplier.dto';
+import { QuerySupplierOptionsDto } from './dto/query-supplier-options.dto';
 
 @Injectable()
 export class SuppliersService {
@@ -25,6 +26,43 @@ export class SuppliersService {
       where: [{ name: ILike(`%${search}%`) }, { email: ILike(`%${search}%`) }],
       order: { createdAt: 'DESC' },
     });
+  }
+
+  async getOptions(query: QuerySupplierOptionsDto) {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
+    const builder = this.suppliersRepository
+      .createQueryBuilder('supplier')
+      .where('supplier.isActive = :isActive', { isActive: true })
+      .orderBy('supplier.name', 'ASC');
+
+    if (query.search?.trim()) {
+      builder.andWhere(
+        '(supplier.name ILIKE :search OR supplier.email ILIKE :search OR supplier.document ILIKE :search)',
+        { search: `%${query.search.trim()}%` },
+      );
+    }
+
+    const [suppliers, totalItems] = await builder
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+
+    return {
+      items: suppliers.map((supplier) => ({
+        id: supplier.id,
+        label: supplier.name,
+        secondary: supplier.document ?? null,
+        helper: supplier.email ?? supplier.phone ?? 'Sin contacto',
+      })),
+      pagination: {
+        totalItems,
+        itemCount: suppliers.length,
+        itemsPerPage: limit,
+        totalPages: Math.max(1, Math.ceil(totalItems / limit)),
+        currentPage: page,
+      },
+    };
   }
 
   async findOne(id: string) {

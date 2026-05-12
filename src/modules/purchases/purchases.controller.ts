@@ -1,4 +1,17 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { PurchasesService } from './purchases.service';
 import { JwtAuthGuard } from '../auth/guards/jwt.auth.guard';
 import { CreatePurchaseDto } from './dto/create-purchase.dto';
@@ -6,6 +19,14 @@ import { RegisterPurchasePaymentDto } from './dto/register-purchase-payment.dto'
 import { UpdatePurchaseDto } from './dto/update-purchase.dto';
 import { CancelPurchaseDto } from './dto/cancel-purchase.dto';
 import { QueryPurchasesDto } from './dto/query-purchases.dto';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
+
+const allowedReceiptMimeTypes = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+]);
 
 @Controller('purchases')
 @UseGuards(JwtAuthGuard)
@@ -33,11 +54,36 @@ export class PurchasesController {
   }
 
   @Post(':id/payments')
+  @UseInterceptors(
+    FileInterceptor('receiptImage', {
+      storage: diskStorage({
+        destination: './uploads/purchase-payments',
+        filename: (_req, file, callback) => {
+          const suffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+          callback(null, `${suffix}${extname(file.originalname)}`);
+        },
+      }),
+      fileFilter: (_req, file, callback) => {
+        if (!allowedReceiptMimeTypes.has(file.mimetype)) {
+          return callback(
+            new BadRequestException('Invalid receipt image format'),
+            false,
+          );
+        }
+
+        callback(null, true);
+      },
+      limits: {
+        fileSize: 3 * 1024 * 1024,
+      },
+    }),
+  )
   async registerPayment(
     @Param('id') id: string,
     @Body() payload: RegisterPurchasePaymentDto,
+    @UploadedFile() receiptImage?: Express.Multer.File,
   ) {
-    return this.purchasesService.registerPayment(id, payload);
+    return this.purchasesService.registerPayment(id, payload, receiptImage);
   }
 
   @Post(':id/cancel')

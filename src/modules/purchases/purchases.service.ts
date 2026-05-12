@@ -20,6 +20,7 @@ import { UpdatePurchaseDto } from './dto/update-purchase.dto';
 import { CancelPurchaseDto } from './dto/cancel-purchase.dto';
 import { PurchaseStatus } from './entities/purchase.entity';
 import { QueryPurchasesDto } from './dto/query-purchases.dto';
+import { PurchasePaymentMethod } from './entities/purchase-payment.entity';
 
 @Injectable()
 export class PurchasesService {
@@ -232,7 +233,11 @@ export class PurchasesService {
     return this.findOne(id);
   }
 
-  async registerPayment(id: string, payload: RegisterPurchasePaymentDto) {
+  async registerPayment(
+    id: string,
+    payload: RegisterPurchasePaymentDto,
+    receiptImage?: Express.Multer.File,
+  ) {
     const purchase = await this.findPurchaseOrFail(id);
 
     if (purchase.status === PurchaseStatus.CANCELLED) {
@@ -254,7 +259,12 @@ export class PurchasesService {
     const payment = this.purchasePaymentsRepository.create({
       purchaseId: purchase.id,
       amount: payload.amount,
+      paymentMethod: payload.paymentMethod,
       note: payload.note?.trim() || null,
+      reference: payload.reference?.trim() || null,
+      receiptImagePath: receiptImage
+        ? `/uploads/purchase-payments/${receiptImage.filename}`
+        : null,
       paidAt: payload.paidAt ? new Date(payload.paidAt) : new Date(),
     });
 
@@ -383,7 +393,10 @@ export class PurchasesService {
     return {
       ...purchase,
       status: normalizedStatus,
-      payments,
+      payments: payments.map((payment) => ({
+        ...payment,
+        paymentMethod: payment.paymentMethod ?? PurchasePaymentMethod.CASH,
+      })),
       canCancel: cancelability?.canCancel,
       cancellationBlockedReason: cancelability?.reason ?? null,
     };

@@ -15,9 +15,13 @@ async function bootstrap() {
   const port = Number(process.env.PORT || 3000);
   const uploadsPath = join(process.cwd(), 'uploads');
   const reviewUploadsPath = join(uploadsPath, 'reviews');
+  const purchasePaymentUploadsPath = join(uploadsPath, 'purchase-payments');
 
   if (!existsSync(reviewUploadsPath)) {
     mkdirSync(reviewUploadsPath, { recursive: true });
+  }
+  if (!existsSync(purchasePaymentUploadsPath)) {
+    mkdirSync(purchasePaymentUploadsPath, { recursive: true });
   }
 
   app.setGlobalPrefix('api');

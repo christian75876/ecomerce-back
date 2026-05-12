@@ -16,6 +16,7 @@ import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { UpdateProductStatusDto } from './dto/update-product-status.dto';
+import { QueryProductOptionsDto } from './dto/query-product-options.dto';
 
 @Controller('products')
 export class ProductsController {
@@ -72,6 +73,12 @@ export class ProductsController {
   @Get('featured/sections')
   async getFeaturedSections() {
     return this.productsService.getFeaturedSections();
+  }
+
+  @Get('options')
+  @UseGuards(JwtAuthGuard)
+  async getOptions(@Query() query: QueryProductOptionsDto) {
+    return this.productsService.getOptions(query);
   }
 
   @Get(':id/related')

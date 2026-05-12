@@ -1,15 +1,7 @@
-import { Type } from 'class-transformer';
-import {
-  IsDateString,
-  IsInt,
-  IsOptional,
-  IsString,
-  IsUUID,
-  Max,
-  Min,
-} from 'class-validator';
+import { IsDateString, IsOptional, IsString, IsUUID } from 'class-validator';
+import { PaginationQueryDto } from '../../../common/dtos/pagination-query.dto';
 
-export class QueryPurchasesDto {
+export class QueryPurchasesDto extends PaginationQueryDto {
   @IsOptional()
   @IsString()
   search?: string;
@@ -25,17 +17,4 @@ export class QueryPurchasesDto {
   @IsOptional()
   @IsDateString()
   dateTo?: string;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  page?: number = 1;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  limit?: number = 10;
 }

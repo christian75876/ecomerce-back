@@ -18,6 +18,7 @@ import { Supplier } from '../suppliers/entities/supplier.entity';
 import { Customer } from '../customers/entities/customer.entity';
 import { SaleItem } from '../sales/entities/sale-item.entity';
 import { InventoryReferenceType } from '../inventory/entities/inventory-batch-allocation.entity';
+import { QueryProductOptionsDto } from './dto/query-product-options.dto';
 
 @Injectable()
 export class ProductsService {
@@ -87,6 +88,51 @@ export class ProductsService {
     }
 
     return product;
+  }
+
+  async getOptions(query: QueryProductOptionsDto) {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
+    const builder = this.productsRepository
+      .createQueryBuilder('product')
+      .leftJoinAndSelect('product.store', 'store')
+      .where('product.isActive = :isActive', { isActive: true })
+      .orderBy('product.name', 'ASC');
+
+    if (query.search?.trim()) {
+      builder.andWhere(
+        '(product.name ILIKE :search OR product.sku ILIKE :search)',
+        { search: `%${query.search.trim()}%` },
+      );
+    }
+
+    if (query.storeId) {
+      builder.andWhere('product.storeId = :storeId', { storeId: query.storeId });
+    }
+
+    const [products, totalItems] = await builder
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+
+    return {
+      items: products.map((product) => ({
+        id: product.id,
+        label: product.name,
+        secondary: product.sku,
+        helper: product.store?.name ?? 'Sin tienda',
+        isPerishable: product.isPerishable,
+        showStock: product.showStock,
+        storeId: product.storeId,
+      })),
+      pagination: {
+        totalItems,
+        itemCount: products.length,
+        itemsPerPage: limit,
+        totalPages: Math.max(1, Math.ceil(totalItems / limit)),
+        currentPage: page,
+      },
+    };
   }
 
   async findRelated(id: string, limit = 6) {

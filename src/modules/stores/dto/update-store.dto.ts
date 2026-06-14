@@ -99,4 +99,13 @@ export class UpdateStoreDto {
   @IsOptional()
   @IsEnum(CoverStyle)
   coverStyle?: CoverStyle;
+
+  @IsOptional()
+  @IsBoolean()
+  wppNotificationsEnabled?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  wppApiKey?: string;
 }

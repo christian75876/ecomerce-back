@@ -3,12 +3,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import { Customer } from '../customers/entities/customer.entity';
 import { Product } from '../products/entities/product.entity';
+import { Store } from '../stores/entities/store.entity';
 import { InventoryService } from '../inventory/inventory.service';
 import { Order, OrderStatus } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { InventoryReferenceType } from '../inventory/entities/inventory-batch-allocation.entity';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class OrdersService {
@@ -23,6 +25,7 @@ export class OrdersService {
     @InjectRepository(OrderItem)
     private readonly orderItemsRepository: Repository<OrderItem>,
     private readonly inventoryService: InventoryService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async findAll() {
@@ -78,11 +81,16 @@ export class OrdersService {
   }
 
   async create(createOrderDto: CreateOrderDto) {
-    return this.dataSource.transaction(async (manager) => {
+    let notifyCustomer: Customer;
+    let notifyStores: Store[] = [];
+
+    const savedOrderId = await this.dataSource.transaction(async (manager) => {
       const customer = await this.resolveCustomer(createOrderDto, manager);
+      notifyCustomer = customer;
       const productsRepository = manager.getRepository(Product);
       const items = [];
       let total = 0;
+      const storeMap = new Map<string, Store>();
 
       for (const item of createOrderDto.items) {
         const product = await productsRepository.findOne({
@@ -100,6 +108,10 @@ export class OrdersService {
           );
         }
 
+        if (product.store && !storeMap.has(product.store.id)) {
+          storeMap.set(product.store.id, product.store);
+        }
+
         const lineTotal = Number(product.price) * item.quantity;
         total += lineTotal;
 
@@ -110,6 +122,8 @@ export class OrdersService {
           lineTotal,
         });
       }
+
+      notifyStores = [...storeMap.values()];
 
       const order = manager.create(Order, {
         customerId: customer.id,
@@ -140,8 +154,15 @@ export class OrdersService {
         });
       }
 
-      return this.findOne(savedOrder.id);
+      return savedOrder.id;
     });
+
+    const fullOrder = await this.findOne(savedOrderId);
+
+    // Fire-and-forget: notify via SSE + WhatsApp
+    void this.notificationsService.notifyNewOrder(fullOrder, notifyCustomer!, notifyStores);
+
+    return fullOrder;
   }
 
   private async resolveCustomer(

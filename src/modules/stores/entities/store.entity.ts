@@ -123,6 +123,12 @@ export class Store {
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 
+  @Column({ name: 'wpp_notifications_enabled', type: 'boolean', default: true })
+  wppNotificationsEnabled: boolean;
+
+  @Column({ name: 'wpp_api_key', type: 'varchar', length: 100, nullable: true })
+  wppApiKey: string | null;
+
   @OneToMany(() => Product, (product) => product.store)
   products: Product[];
 

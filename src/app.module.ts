@@ -20,6 +20,7 @@ import { CashModule } from './modules/cash/cash.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { EmailModule } from './modules/email/email.module';
 import { InvitationsModule } from './modules/invitations/invitations.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { InvitationsModule } from './modules/invitations/invitations.module';
     PurchasesModule,
     CashModule,
     AuditModule,
+    NotificationsModule,
   ],
   providers: [
     AppInitializer,

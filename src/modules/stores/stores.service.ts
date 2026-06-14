@@ -132,6 +132,8 @@ export class StoresService {
       buttonStyle: payload.buttonStyle ?? store.buttonStyle,
       layoutStyle: payload.layoutStyle ?? store.layoutStyle,
       coverStyle: payload.coverStyle ?? store.coverStyle,
+      wppNotificationsEnabled: typeof payload.wppNotificationsEnabled === 'boolean' ? payload.wppNotificationsEnabled : store.wppNotificationsEnabled,
+      wppApiKey: typeof payload.wppApiKey === 'string' ? payload.wppApiKey.trim() || null : store.wppApiKey,
     });
 
     return this.storesRepository.save(store);

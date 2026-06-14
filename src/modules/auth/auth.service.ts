@@ -22,6 +22,7 @@ import { VerifyEmailDto } from './dto/verifyEmail.auth.dto';
 import { VerifyRecoverOtpDto } from './dto/verifyRecoverOtp.auth.dto';
 import { ResetPasswordDto } from './dto/resetPassword.auth.dto';
 import { EmailService } from './email.service';
+import { InvitationsService } from '../invitations/invitations.service';
 
 @Injectable()
 export class AuthService {
@@ -39,6 +40,7 @@ export class AuthService {
     @InjectRepository(RecoverToken)
     private readonly recoverTokenRepository: Repository<RecoverToken>,
     private readonly emailService: EmailService,
+    private readonly invitationsService: InvitationsService,
   ) {}
 
   private normalizeEmail(email: string): string {
@@ -215,21 +217,34 @@ export class AuthService {
     email,
     password,
     phone,
+    inviteToken,
   }: RegisterCustomerDto) {
     const normalizedEmail = await this.checkDoesEmailExist(email);
-    const buyerRole = await this.roleRepository.findOne({
-      where: { name: 'buyer' },
-    });
 
-    if (!buyerRole) {
-      throw new NotFoundException('Buyer role is not configured');
+    let assignedRole = await this.roleRepository.findOne({ where: { name: 'buyer' } });
+    let isInvited = false;
+
+    if (inviteToken) {
+      const invitation = await this.invitationsService.validateToken(inviteToken);
+      if (invitation.email !== normalizedEmail) {
+        throw new BadRequestException('El correo no coincide con la invitación');
+      }
+      const sellerRole = await this.roleRepository.findOne({ where: { name: 'seller' } });
+      if (sellerRole) {
+        assignedRole = sellerRole;
+        isInvited = true;
+      }
+    }
+
+    if (!assignedRole) {
+      throw new NotFoundException('Role not configured');
     }
 
     const { user, customer } =
       await this.userRepository.manager.transaction(async (em) => {
         const hashedPass = await bcrypt.hash(password, bcrypt.genSaltSync(10));
         const user = em.create(User, {
-          role_id: buyerRole.id,
+          role_id: assignedRole.id,
           email: normalizedEmail,
           password: hashedPass,
           isEmailVerified: true,
@@ -239,7 +254,7 @@ export class AuthService {
         const [firstName, ...restName] = name.trim().split(/\s+/);
         const customer = em.create(Customer, {
           firstName,
-          lastName: restName.join(' ') || 'Cliente',
+          lastName: restName.join(' ') || 'Vendedor',
           email: normalizedEmail,
           phone: phone?.trim() || null,
           userId: user.id,
@@ -249,22 +264,26 @@ export class AuthService {
         return { user, customer };
       });
 
+    if (isInvited && inviteToken) {
+      await this.invitationsService.markAccepted(inviteToken);
+    }
+
     const now = Math.floor(Date.now() / 1000);
     const payload = {
       sub: user.id,
       iat: now,
-      role_id: buyerRole.id,
+      role_id: assignedRole.id,
       email: user.email,
     };
 
     return {
-      message: 'Cliente registrado correctamente',
+      message: isInvited ? 'Vendedor registrado correctamente' : 'Cliente registrado correctamente',
       token: await this.jwtService.signAsync(payload, { expiresIn: '1h' }),
       user: {
         id: user.id,
         email: user.email,
         role_id: user.role_id,
-        role: buyerRole.name,
+        role: assignedRole.name,
       },
       customer: {
         id: customer.id,

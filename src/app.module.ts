@@ -18,6 +18,8 @@ import { SuppliersModule } from './modules/suppliers/suppliers.module';
 import { PurchasesModule } from './modules/purchases/purchases.module';
 import { CashModule } from './modules/cash/cash.module';
 import { AuditModule } from './modules/audit/audit.module';
+import { EmailModule } from './modules/email/email.module';
+import { InvitationsModule } from './modules/invitations/invitations.module';
 
 @Module({
   imports: [
@@ -26,7 +28,9 @@ import { AuditModule } from './modules/audit/audit.module';
       envFilePath: '.env',
     }),
     DatabaseModule,
+    EmailModule,
     AuthModule,
+    InvitationsModule,
     CategoriesModule,
     ProductsModule,
     InventoryModule,

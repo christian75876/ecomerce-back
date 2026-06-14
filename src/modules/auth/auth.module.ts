@@ -7,14 +7,15 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { User } from '../users/entities/user.entity';
 import { RecoverToken } from './entities/token.entity';
-import { EmailService } from './email.service';
 import { Role } from '../users/entities/role.entity';
 import { Customer } from '../customers/entities/customer.entity';
+import { InvitationsModule } from '../invitations/invitations.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([User, Role, Customer, RecoverToken]),
     ConfigModule.forRoot(),
+    InvitationsModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -27,7 +28,7 @@ import { Customer } from '../customers/entities/customer.entity';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, EmailService],
-  exports: [JwtStrategy],
+  providers: [AuthService, JwtStrategy],
+  exports: [JwtStrategy, AuthService],
 })
 export class AuthModule {}

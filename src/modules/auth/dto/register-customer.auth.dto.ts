@@ -31,4 +31,9 @@ export class RegisterCustomerDto {
   @IsString()
   @MaxLength(30)
   phone?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  inviteToken?: string;
 }

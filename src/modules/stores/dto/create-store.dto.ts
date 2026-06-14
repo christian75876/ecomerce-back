@@ -2,6 +2,7 @@ import {
   IsBoolean,
   IsEmail,
   IsEnum,
+  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -100,4 +101,8 @@ export class CreateStoreDto {
   @IsOptional()
   @IsEnum(CoverStyle)
   coverStyle?: CoverStyle;
+
+  @IsOptional()
+  @IsInt()
+  userId?: number;
 }

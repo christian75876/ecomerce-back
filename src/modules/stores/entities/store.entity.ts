@@ -123,6 +123,9 @@ export class Store {
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 
+  @Column({ name: 'user_id', type: 'int', nullable: true })
+  userId: number | null;
+
   @Column({ name: 'wpp_notifications_enabled', type: 'boolean', default: true })
   wppNotificationsEnabled: boolean;
 

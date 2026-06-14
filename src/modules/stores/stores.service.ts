@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -8,6 +9,7 @@ import { Repository } from 'typeorm';
 import { Store } from './entities/store.entity';
 import { CreateStoreDto } from './dto/create-store.dto';
 import { UpdateStoreDto } from './dto/update-store.dto';
+import { UpdateStoreNotificationsDto } from './dto/update-store-notifications.dto';
 
 @Injectable()
 export class StoresService {
@@ -50,6 +52,40 @@ export class StoresService {
     return store;
   }
 
+  async findMine(userId: number) {
+    return this.storesRepository.find({
+      where: { userId },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async updateNotifications(
+    id: string,
+    payload: UpdateStoreNotificationsDto,
+    requestingUserId: number,
+    isAdmin: boolean,
+  ) {
+    const store = await this.findOneById(id);
+
+    if (!isAdmin && store.userId !== requestingUserId) {
+      throw new ForbiddenException('No tienes permisos para editar esta tienda');
+    }
+
+    Object.assign(store, {
+      wppNotificationsEnabled: typeof payload.wppNotificationsEnabled === 'boolean'
+        ? payload.wppNotificationsEnabled
+        : store.wppNotificationsEnabled,
+      wppApiKey: typeof payload.wppApiKey === 'string'
+        ? payload.wppApiKey.trim() || null
+        : store.wppApiKey,
+      whatsappNumber: typeof payload.whatsappNumber === 'string'
+        ? payload.whatsappNumber.trim() || null
+        : store.whatsappNumber,
+    });
+
+    return this.storesRepository.save(store);
+  }
+
   async create(payload: CreateStoreDto) {
     await this.ensureUniqueSlug(payload.slug);
 
@@ -65,6 +101,7 @@ export class StoresService {
       whatsappNumber: payload.whatsappNumber?.trim() || null,
       email: payload.email?.trim().toLowerCase() || null,
       isActive: payload.isActive ?? true,
+      userId: payload.userId ?? null,
       deliveryOptions: payload.deliveryOptions,
       accentColor: payload.accentColor?.trim() || null,
       bgColor: payload.bgColor?.trim() || null,

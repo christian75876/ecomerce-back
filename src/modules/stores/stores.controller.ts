@@ -1,7 +1,8 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { StoresService } from './stores.service';
 import { CreateStoreDto } from './dto/create-store.dto';
 import { UpdateStoreDto } from './dto/update-store.dto';
+import { UpdateStoreNotificationsDto } from './dto/update-store-notifications.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt.auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
@@ -15,6 +16,12 @@ export class StoresController {
     return this.storesService.findAll(
       typeof active === 'string' ? active.toLowerCase() === 'true' : undefined,
     );
+  }
+
+  @Get('mine')
+  @UseGuards(JwtAuthGuard)
+  async findMine(@Req() req: any) {
+    return this.storesService.findMine(req.user.userId as number);
   }
 
   @Get('slug/:slug')
@@ -34,5 +41,17 @@ export class StoresController {
   @Roles('admin')
   async update(@Param('id') id: string, @Body() payload: UpdateStoreDto) {
     return this.storesService.update(id, payload);
+  }
+
+  @Patch(':id/notifications')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'seller')
+  async updateNotifications(
+    @Param('id') id: string,
+    @Body() payload: UpdateStoreNotificationsDto,
+    @Req() req: any,
+  ) {
+    const isAdmin = req.user.role === 'admin';
+    return this.storesService.updateNotifications(id, payload, req.user.userId as number, isAdmin);
   }
 }

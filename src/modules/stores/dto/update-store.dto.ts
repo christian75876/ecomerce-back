@@ -7,7 +7,7 @@ import {
   Matches,
   MaxLength,
 } from 'class-validator';
-import { ButtonStyle, CoverStyle, DeliveryOptions, FontStyle, LayoutStyle } from '../entities/store.entity';
+import { ButtonStyle, CoverStyle, DeliveryOptions, FontStyle, LayoutStyle, StoreType } from '../entities/store.entity';
 
 export class UpdateStoreDto {
   @IsOptional()
@@ -99,6 +99,19 @@ export class UpdateStoreDto {
   @IsOptional()
   @IsEnum(CoverStyle)
   coverStyle?: CoverStyle;
+
+  @IsOptional()
+  @IsBoolean()
+  isAdultContent?: boolean;
+
+  @IsOptional()
+  @IsEnum(StoreType)
+  storeType?: StoreType;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  menuPdfUrl?: string;
 
   @IsOptional()
   @IsBoolean()

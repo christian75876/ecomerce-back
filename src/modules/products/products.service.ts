@@ -308,6 +308,7 @@ export class ProductsService {
         trackBatches: createProductDto.trackBatches ?? true,
         storeId: createProductDto.storeId ?? null,
         supplierId: createProductDto.supplierId ?? null,
+        menuCategoryId: createProductDto.menuCategoryId ?? null,
       });
 
       const savedProduct = await manager.getRepository(Product).save(product);
@@ -359,6 +360,9 @@ export class ProductsService {
       sku: updateProductDto.sku?.trim().toUpperCase() ?? product.sku,
       storeId: updateProductDto.storeId ?? product.storeId,
       supplierId: updateProductDto.supplierId ?? product.supplierId,
+      menuCategoryId: typeof updateProductDto.menuCategoryId === 'string'
+        ? updateProductDto.menuCategoryId || null
+        : product.menuCategoryId,
       cost:
         typeof updateProductDto.cost === 'number'
           ? updateProductDto.cost

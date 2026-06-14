@@ -21,6 +21,7 @@ import { AuditModule } from './modules/audit/audit.module';
 import { EmailModule } from './modules/email/email.module';
 import { InvitationsModule } from './modules/invitations/invitations.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { MenuCategoriesModule } from './modules/menu-categories/menu-categories.module';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     CashModule,
     AuditModule,
     NotificationsModule,
+    MenuCategoriesModule,
   ],
   providers: [
     AppInitializer,

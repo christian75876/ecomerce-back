@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Store } from './entities/store.entity';
+import { Store, StoreType } from './entities/store.entity';
 import { CreateStoreDto } from './dto/create-store.dto';
 import { UpdateStoreDto } from './dto/update-store.dto';
 import { UpdateStoreNotificationsDto } from './dto/update-store-notifications.dto';
@@ -101,6 +101,9 @@ export class StoresService {
       whatsappNumber: payload.whatsappNumber?.trim() || null,
       email: payload.email?.trim().toLowerCase() || null,
       isActive: payload.isActive ?? true,
+      isAdultContent: false,
+      storeType: payload.storeType ?? StoreType.STORE,
+      menuPdfUrl: payload.menuPdfUrl?.trim() || null,
       userId: payload.userId ?? null,
       deliveryOptions: payload.deliveryOptions,
       accentColor: payload.accentColor?.trim() || null,
@@ -161,6 +164,15 @@ export class StoresService {
         typeof payload.isActive === 'boolean'
           ? payload.isActive
           : store.isActive,
+      isAdultContent:
+        typeof payload.isAdultContent === 'boolean'
+          ? payload.isAdultContent
+          : store.isAdultContent,
+      storeType: payload.storeType ?? store.storeType,
+      menuPdfUrl:
+        typeof payload.menuPdfUrl === 'string'
+          ? payload.menuPdfUrl.trim() || null
+          : store.menuPdfUrl,
       deliveryOptions: payload.deliveryOptions ?? store.deliveryOptions,
       accentColor: typeof payload.accentColor === 'string' ? payload.accentColor.trim() || null : store.accentColor,
       bgColor: typeof payload.bgColor === 'string' ? payload.bgColor.trim() || null : store.bgColor,

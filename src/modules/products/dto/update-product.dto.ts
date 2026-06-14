@@ -41,6 +41,10 @@ export class UpdateProductDto {
 
   @IsOptional()
   @IsUUID()
+  menuCategoryId?: string;
+
+  @IsOptional()
+  @IsUUID()
   supplierId?: string;
 
   @IsOptional()

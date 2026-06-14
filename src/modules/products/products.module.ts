@@ -14,6 +14,7 @@ import { Customer } from '../customers/entities/customer.entity';
 import { SaleItem } from '../sales/entities/sale-item.entity';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { CloudinaryModule } from '../cloudinary/cloudinary.module';
+import { MenuCategory } from '../menu-categories/entities/menu-category.entity';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { CloudinaryModule } from '../cloudinary/cloudinary.module';
       Supplier,
       Customer,
       SaleItem,
+      MenuCategory,
     ]),
     InventoryModule,
     CloudinaryModule,

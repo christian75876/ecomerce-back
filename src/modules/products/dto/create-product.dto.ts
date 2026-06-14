@@ -39,6 +39,10 @@ export class CreateProductDto {
   storeId?: string;
 
   @IsOptional()
+  @IsUUID()
+  menuCategoryId?: string;
+
+  @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(0)

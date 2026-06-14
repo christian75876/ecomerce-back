@@ -36,6 +36,12 @@ export enum CoverStyle {
   SOLID = 'SOLID',
   MINIMAL = 'MINIMAL',
 }
+
+export enum StoreType {
+  STORE = 'STORE',
+  RESTAURANT = 'RESTAURANT',
+}
+
 @Entity('stores')
 export class Store {
   @PrimaryGeneratedColumn('uuid')
@@ -120,8 +126,22 @@ export class Store {
   @Column({ type: 'varchar', length: 160, nullable: true })
   email: string | null;
 
+  @Column({
+    name: 'store_type',
+    type: 'enum',
+    enum: StoreType,
+    default: StoreType.STORE,
+  })
+  storeType: StoreType;
+
+  @Column({ name: 'menu_pdf_url', type: 'varchar', length: 500, nullable: true })
+  menuPdfUrl: string | null;
+
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
+
+  @Column({ name: 'is_adult_content', type: 'boolean', default: false })
+  isAdultContent: boolean;
 
   @Column({ name: 'user_id', type: 'int', nullable: true })
   userId: number | null;

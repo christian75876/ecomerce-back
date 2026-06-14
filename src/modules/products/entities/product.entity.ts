@@ -13,6 +13,7 @@ import { InventoryMovement } from '../../inventory/entities/inventory-movement.e
 import { Store } from '../../stores/entities/store.entity';
 import { Supplier } from '../../suppliers/entities/supplier.entity';
 import { InventoryBatch } from '../../inventory/entities/inventory-batch.entity';
+import { MenuCategory } from '../../menu-categories/entities/menu-category.entity';
 
 @Entity('products')
 export class Product {
@@ -58,6 +59,9 @@ export class Product {
   @Column({ name: 'store_id', type: 'uuid', nullable: true })
   storeId: string | null;
 
+  @Column({ name: 'menu_category_id', type: 'uuid', nullable: true })
+  menuCategoryId: string | null;
+
   @Column({ name: 'supplier_id', type: 'uuid', nullable: true })
   supplierId: string | null;
 
@@ -77,6 +81,10 @@ export class Product {
   @ManyToOne(() => Supplier, { eager: true, nullable: true })
   @JoinColumn({ name: 'supplier_id' })
   supplier: Supplier | null;
+
+  @ManyToOne(() => MenuCategory, { eager: true, nullable: true })
+  @JoinColumn({ name: 'menu_category_id' })
+  menuCategory: MenuCategory | null;
 
   @OneToMany(
     () => InventoryMovement,

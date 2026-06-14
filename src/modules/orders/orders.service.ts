@@ -115,6 +115,11 @@ export class OrdersService {
         customerId: customer.id,
         total,
         status: OrderStatus.PENDING,
+        deliveryMethod: createOrderDto.deliveryMethod ?? null,
+        deliveryAddress: createOrderDto.deliveryAddress?.trim() || null,
+        deliveryCity: createOrderDto.deliveryCity?.trim() || null,
+        deliveryDepartment: createOrderDto.deliveryDepartment?.trim() || null,
+        deliveryNotes: createOrderDto.deliveryNotes?.trim() || null,
       });
       const savedOrder = await manager.save(order);
 

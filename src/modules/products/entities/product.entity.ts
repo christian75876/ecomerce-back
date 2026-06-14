@@ -34,6 +34,9 @@ export class Product {
   @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
   cost: number | null;
 
+  @Column({ name: 'compare_at_price', type: 'decimal', precision: 12, scale: 2, nullable: true })
+  compareAtPrice: number | null;
+
   @Column({ name: 'image_url', type: 'varchar', length: 500, nullable: true })
   imageUrl: string | null;
 

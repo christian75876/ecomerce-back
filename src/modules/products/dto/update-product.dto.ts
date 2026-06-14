@@ -50,6 +50,12 @@ export class UpdateProductDto {
   cost?: number;
 
   @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  compareAtPrice?: number;
+
+  @IsOptional()
   @IsString()
   @MaxLength(500)
   imageUrl?: string;

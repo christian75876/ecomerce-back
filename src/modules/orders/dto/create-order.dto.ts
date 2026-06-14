@@ -2,6 +2,7 @@ import {
   ArrayMinSize,
   IsArray,
   IsEmail,
+  IsEnum,
   IsInt,
   IsOptional,
   IsString,
@@ -10,6 +11,7 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
+import { DeliveryMethod } from '../entities/order.entity';
 import { Type } from 'class-transformer';
 
 class CreateOrderItemDto {
@@ -55,4 +57,28 @@ export class CreateOrderDto {
   @ValidateNested({ each: true })
   @Type(() => CreateOrderItemDto)
   items: CreateOrderItemDto[];
+
+  @IsOptional()
+  @IsEnum(DeliveryMethod)
+  deliveryMethod?: DeliveryMethod;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  deliveryAddress?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  deliveryCity?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  deliveryDepartment?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  deliveryNotes?: string;
 }

@@ -62,8 +62,17 @@ export class StoresService {
       secondaryColor: payload.secondaryColor?.trim() || null,
       description: payload.description?.trim() || null,
       phone: payload.phone?.trim() || null,
+      whatsappNumber: payload.whatsappNumber?.trim() || null,
       email: payload.email?.trim().toLowerCase() || null,
       isActive: payload.isActive ?? true,
+      deliveryOptions: payload.deliveryOptions,
+      accentColor: payload.accentColor?.trim() || null,
+      bgColor: payload.bgColor?.trim() || null,
+      textColor: payload.textColor?.trim() || null,
+      fontStyle: payload.fontStyle,
+      buttonStyle: payload.buttonStyle,
+      layoutStyle: payload.layoutStyle,
+      coverStyle: payload.coverStyle,
     });
 
     return this.storesRepository.save(store);
@@ -103,6 +112,10 @@ export class StoresService {
         typeof payload.phone === 'string'
           ? payload.phone.trim() || null
           : store.phone,
+      whatsappNumber:
+        typeof payload.whatsappNumber === 'string'
+          ? payload.whatsappNumber.trim() || null
+          : store.whatsappNumber,
       email:
         typeof payload.email === 'string'
           ? payload.email.trim().toLowerCase() || null
@@ -111,6 +124,14 @@ export class StoresService {
         typeof payload.isActive === 'boolean'
           ? payload.isActive
           : store.isActive,
+      deliveryOptions: payload.deliveryOptions ?? store.deliveryOptions,
+      accentColor: typeof payload.accentColor === 'string' ? payload.accentColor.trim() || null : store.accentColor,
+      bgColor: typeof payload.bgColor === 'string' ? payload.bgColor.trim() || null : store.bgColor,
+      textColor: typeof payload.textColor === 'string' ? payload.textColor.trim() || null : store.textColor,
+      fontStyle: payload.fontStyle ?? store.fontStyle,
+      buttonStyle: payload.buttonStyle ?? store.buttonStyle,
+      layoutStyle: payload.layoutStyle ?? store.layoutStyle,
+      coverStyle: payload.coverStyle ?? store.coverStyle,
     });
 
     return this.storesRepository.save(store);

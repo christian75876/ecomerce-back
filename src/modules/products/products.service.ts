@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -8,6 +9,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { ILike, Repository } from 'typeorm';
 import { Product } from './entities/product.entity';
 import { ProductFavorite } from './entities/product-favorite.entity';
+import { ProductVideo, VideoType } from './entities/product-video.entity';
+import { ProductImage } from './entities/product-image.entity';
 import { Category } from '../categories/entities/category.entity';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -20,6 +23,15 @@ import { SaleItem } from '../sales/entities/sale-item.entity';
 import { InventoryReferenceType } from '../inventory/entities/inventory-batch-allocation.entity';
 import { QueryProductOptionsDto } from './dto/query-product-options.dto';
 
+const YOUTUBE_REGEX = /^https?:\/\/(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)[\w-]+/;
+const INSTAGRAM_REGEX = /^https?:\/\/(www\.)?instagram\.com\/(p|reel|tv)\/[\w-]+/;
+
+function detectVideoType(url: string): VideoType {
+  if (YOUTUBE_REGEX.test(url)) return 'YOUTUBE';
+  if (INSTAGRAM_REGEX.test(url)) return 'INSTAGRAM';
+  throw new BadRequestException('URL no válida. Usa un enlace de YouTube o Instagram');
+}
+
 @Injectable()
 export class ProductsService {
   constructor(
@@ -27,6 +39,10 @@ export class ProductsService {
     private readonly productsRepository: Repository<Product>,
     @InjectRepository(ProductFavorite)
     private readonly favoritesRepository: Repository<ProductFavorite>,
+    @InjectRepository(ProductVideo)
+    private readonly videosRepository: Repository<ProductVideo>,
+    @InjectRepository(ProductImage)
+    private readonly imagesRepository: Repository<ProductImage>,
     @InjectRepository(Category)
     private readonly categoriesRepository: Repository<Category>,
     @InjectRepository(Store)
@@ -45,6 +61,9 @@ export class ProductsService {
     categoryId?: string;
     storeId?: string;
     active?: boolean;
+    sortBy?: string;
+    minPrice?: number;
+    maxPrice?: number;
   }) {
     const where: Record<string, unknown> = {};
 
@@ -64,29 +83,52 @@ export class ProductsService {
       where.isActive = filters.active;
     }
 
-    const products = await this.productsRepository.find({
-      where,
-      order: {
-        createdAt: 'DESC',
-      },
-    });
+    let order: Record<string, string> = { createdAt: 'DESC' };
+    if (filters.sortBy === 'price_asc') order = { price: 'ASC' };
+    else if (filters.sortBy === 'price_desc') order = { price: 'DESC' };
+    else if (filters.sortBy === 'name_asc') order = { name: 'ASC' };
+
+    let products = await this.productsRepository.find({ where, order });
 
     if (filters.active) {
-      return products.filter((product) => !product.store || product.store.isActive);
+      products = products.filter((product) => !product.store || product.store.isActive);
     }
 
-    return products;
+    if (filters.minPrice !== undefined) {
+      products = products.filter((p) => Number(p.price) >= filters.minPrice!);
+    }
+    if (filters.maxPrice !== undefined) {
+      products = products.filter((p) => Number(p.price) <= filters.maxPrice!);
+    }
+
+    const stockMap = await this.getStockMap(products.map((p) => p.id));
+    return products.map((p) => ({ ...p, availableQuantity: stockMap.get(p.id) ?? 0 }));
+  }
+
+  private async getStockMap(productIds: string[]): Promise<Map<string, number>> {
+    if (productIds.length === 0) return new Map();
+    const rows = await this.imagesRepository.manager
+      .createQueryBuilder()
+      .select('batch.product_id', 'productId')
+      .addSelect('COALESCE(SUM(batch.available_quantity), 0)', 'stock')
+      .from('inventory_batches', 'batch')
+      .where('batch.product_id IN (:...ids)', { ids: productIds })
+      .groupBy('batch.product_id')
+      .getRawMany<{ productId: string; stock: string }>();
+    const map = new Map<string, number>();
+    rows.forEach((row) => map.set(row.productId, Number(row.stock)));
+    return map;
   }
 
   async findOne(id: string) {
-    const product = await this.productsRepository.findOne({
-      where: { id },
-    });
+    const product = await this.findEntity(id);
+    const stock = await this.inventoryService.getCurrentStock(id);
+    return { ...product, availableQuantity: stock };
+  }
 
-    if (!product) {
-      throw new NotFoundException('Product not found');
-    }
-
+  private async findEntity(id: string): Promise<Product> {
+    const product = await this.productsRepository.findOne({ where: { id } });
+    if (!product) throw new NotFoundException('Product not found');
     return product;
   }
 
@@ -257,6 +299,7 @@ export class ProductsService {
         sku: createProductDto.sku.trim().toUpperCase(),
         imageUrl: createProductDto.imageUrl?.trim() || null,
         cost: typeof createProductDto.cost === 'number' ? createProductDto.cost : null,
+        compareAtPrice: typeof createProductDto.compareAtPrice === 'number' ? createProductDto.compareAtPrice : null,
         showStock: createProductDto.showStock ?? false,
         isActive: createProductDto.isActive ?? true,
         isPerishable: createProductDto.isPerishable ?? false,
@@ -289,7 +332,7 @@ export class ProductsService {
   }
 
   async update(id: string, updateProductDto: UpdateProductDto) {
-    const product = await this.findOne(id);
+    const product = await this.findEntity(id);
 
     if (updateProductDto.categoryId) {
       await this.ensureCategoryExists(updateProductDto.categoryId);
@@ -318,6 +361,12 @@ export class ProductsService {
         typeof updateProductDto.cost === 'number'
           ? updateProductDto.cost
           : product.cost,
+      compareAtPrice:
+        typeof updateProductDto.compareAtPrice === 'number'
+          ? updateProductDto.compareAtPrice
+          : updateProductDto.compareAtPrice === null
+            ? null
+            : product.compareAtPrice,
       isPerishable:
         typeof updateProductDto.isPerishable === 'boolean'
           ? updateProductDto.isPerishable
@@ -336,7 +385,7 @@ export class ProductsService {
   }
 
   async updateStatus(id: string, updateStatusDto: UpdateProductStatusDto) {
-    const product = await this.findOne(id);
+    const product = await this.findEntity(id);
     product.isActive = updateStatusDto.isActive;
     return this.productsRepository.save(product);
   }
@@ -450,6 +499,73 @@ export class ProductsService {
     if (existingProduct && existingProduct.id !== currentProductId) {
       throw new ConflictException('SKU is already in use');
     }
+  }
+
+  async uploadImage(id: string, file: Express.Multer.File) {
+    const product = await this.findEntity(id);
+    product.imageUrl = `/uploads/products/${file.filename}`;
+    return this.productsRepository.save(product);
+  }
+
+  async getVideos(productId: string) {
+    return this.videosRepository.find({
+      where: { productId },
+      order: { order: 'ASC', createdAt: 'ASC' },
+    });
+  }
+
+  async addVideo(productId: string, videoUrl: string, title?: string) {
+    await this.findOne(productId);
+    const videoType = detectVideoType(videoUrl.trim());
+    const count = await this.videosRepository.count({ where: { productId } });
+    const video = this.videosRepository.create({
+      productId,
+      videoUrl: videoUrl.trim(),
+      videoType,
+      title: title?.trim() || null,
+      order: count,
+    });
+    return this.videosRepository.save(video);
+  }
+
+  async getGallery(productId: string) {
+    return this.imagesRepository.find({
+      where: { productId },
+      order: { order: 'ASC', createdAt: 'ASC' },
+    });
+  }
+
+  async addGalleryImage(productId: string, file: Express.Multer.File) {
+    await this.findOne(productId);
+    const count = await this.imagesRepository.count({ where: { productId } });
+    const image = this.imagesRepository.create({
+      productId,
+      imageUrl: `/uploads/products/gallery/${file.filename}`,
+      order: count,
+    });
+    return this.imagesRepository.save(image);
+  }
+
+  async removeGalleryImage(productId: string, imageId: string) {
+    const image = await this.imagesRepository.findOne({
+      where: { id: imageId, productId },
+    });
+    if (!image) {
+      throw new NotFoundException('Imagen no encontrada');
+    }
+    await this.imagesRepository.remove(image);
+    return { removed: true };
+  }
+
+  async removeVideo(productId: string, videoId: string) {
+    const video = await this.videosRepository.findOne({
+      where: { id: videoId, productId },
+    });
+    if (!video) {
+      throw new NotFoundException('Video no encontrado');
+    }
+    await this.videosRepository.remove(video);
+    return { removed: true };
   }
 
   private async getCustomerByUserId(userId: number) {

@@ -8,6 +8,34 @@ import {
 } from 'typeorm';
 import { Product } from '../../products/entities/product.entity';
 
+export enum DeliveryOptions {
+  DELIVERY = 'DELIVERY',
+  PICKUP = 'PICKUP',
+  BOTH = 'BOTH',
+}
+
+export enum FontStyle {
+  MODERN = 'MODERN',
+  CLASSIC = 'CLASSIC',
+  PLAYFUL = 'PLAYFUL',
+}
+
+export enum ButtonStyle {
+  ROUNDED = 'ROUNDED',
+  SHARP = 'SHARP',
+  PILL = 'PILL',
+}
+
+export enum LayoutStyle {
+  GRID = 'GRID',
+  LIST = 'LIST',
+}
+
+export enum CoverStyle {
+  GRADIENT = 'GRADIENT',
+  SOLID = 'SOLID',
+  MINIMAL = 'MINIMAL',
+}
 @Entity('stores')
 export class Store {
   @PrimaryGeneratedColumn('uuid')
@@ -36,6 +64,58 @@ export class Store {
 
   @Column({ type: 'varchar', length: 30, nullable: true })
   phone: string | null;
+
+  @Column({ name: 'whatsapp_number', type: 'varchar', length: 30, nullable: true })
+  whatsappNumber: string | null;
+
+  @Column({
+    name: 'delivery_options',
+    type: 'enum',
+    enum: DeliveryOptions,
+    default: DeliveryOptions.BOTH,
+  })
+  deliveryOptions: DeliveryOptions;
+
+  @Column({ name: 'accent_color', type: 'varchar', length: 20, nullable: true })
+  accentColor: string | null;
+
+  @Column({ name: 'bg_color', type: 'varchar', length: 20, nullable: true })
+  bgColor: string | null;
+
+  @Column({ name: 'text_color', type: 'varchar', length: 20, nullable: true })
+  textColor: string | null;
+
+  @Column({
+    name: 'font_style',
+    type: 'enum',
+    enum: FontStyle,
+    default: FontStyle.MODERN,
+  })
+  fontStyle: FontStyle;
+
+  @Column({
+    name: 'button_style',
+    type: 'enum',
+    enum: ButtonStyle,
+    default: ButtonStyle.ROUNDED,
+  })
+  buttonStyle: ButtonStyle;
+
+  @Column({
+    name: 'layout_style',
+    type: 'enum',
+    enum: LayoutStyle,
+    default: LayoutStyle.GRID,
+  })
+  layoutStyle: LayoutStyle;
+
+  @Column({
+    name: 'cover_style',
+    type: 'enum',
+    enum: CoverStyle,
+    default: CoverStyle.GRADIENT,
+  })
+  coverStyle: CoverStyle;
 
   @Column({ type: 'varchar', length: 160, nullable: true })
   email: string | null;

@@ -1,11 +1,13 @@
 import {
   IsBoolean,
   IsEmail,
+  IsEnum,
   IsOptional,
   IsString,
   Matches,
   MaxLength,
 } from 'class-validator';
+import { ButtonStyle, CoverStyle, DeliveryOptions, FontStyle, LayoutStyle } from '../entities/store.entity';
 
 export class UpdateStoreDto {
   @IsOptional()
@@ -51,10 +53,50 @@ export class UpdateStoreDto {
   phone?: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  whatsappNumber?: string;
+
+  @IsOptional()
   @IsEmail()
   email?: string;
 
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsEnum(DeliveryOptions)
+  deliveryOptions?: DeliveryOptions;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  accentColor?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  bgColor?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  textColor?: string;
+
+  @IsOptional()
+  @IsEnum(FontStyle)
+  fontStyle?: FontStyle;
+
+  @IsOptional()
+  @IsEnum(ButtonStyle)
+  buttonStyle?: ButtonStyle;
+
+  @IsOptional()
+  @IsEnum(LayoutStyle)
+  layoutStyle?: LayoutStyle;
+
+  @IsOptional()
+  @IsEnum(CoverStyle)
+  coverStyle?: CoverStyle;
 }

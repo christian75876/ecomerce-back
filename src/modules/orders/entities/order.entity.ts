@@ -20,6 +20,11 @@ export enum OrderStatus {
   CANCELLED = 'CANCELLED',
 }
 
+export enum DeliveryMethod {
+  DELIVERY = 'DELIVERY',
+  PICKUP = 'PICKUP',
+}
+
 @Entity('orders')
 export class Order {
   @PrimaryGeneratedColumn('uuid')
@@ -41,6 +46,27 @@ export class Order {
 
   @Column({ type: 'decimal', precision: 12, scale: 2 })
   total: number;
+
+  @Column({
+    name: 'delivery_method',
+    type: 'enum',
+    enum: DeliveryMethod,
+    default: DeliveryMethod.PICKUP,
+    nullable: true,
+  })
+  deliveryMethod: DeliveryMethod | null;
+
+  @Column({ name: 'delivery_address', type: 'text', nullable: true })
+  deliveryAddress: string | null;
+
+  @Column({ name: 'delivery_city', type: 'varchar', length: 120, nullable: true })
+  deliveryCity: string | null;
+
+  @Column({ name: 'delivery_department', type: 'varchar', length: 120, nullable: true })
+  deliveryDepartment: string | null;
+
+  @Column({ name: 'delivery_notes', type: 'text', nullable: true })
+  deliveryNotes: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;

@@ -19,8 +19,7 @@ import { RegisterPurchasePaymentDto } from './dto/register-purchase-payment.dto'
 import { UpdatePurchaseDto } from './dto/update-purchase.dto';
 import { CancelPurchaseDto } from './dto/cancel-purchase.dto';
 import { QueryPurchasesDto } from './dto/query-purchases.dto';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
+import { memoryStorage } from 'multer';
 
 const allowedReceiptMimeTypes = new Set([
   'image/jpeg',
@@ -56,26 +55,14 @@ export class PurchasesController {
   @Post(':id/payments')
   @UseInterceptors(
     FileInterceptor('receiptImage', {
-      storage: diskStorage({
-        destination: './uploads/purchase-payments',
-        filename: (_req, file, callback) => {
-          const suffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-          callback(null, `${suffix}${extname(file.originalname)}`);
-        },
-      }),
+      storage: memoryStorage(),
       fileFilter: (_req, file, callback) => {
         if (!allowedReceiptMimeTypes.has(file.mimetype)) {
-          return callback(
-            new BadRequestException('Invalid receipt image format'),
-            false,
-          );
+          return callback(new BadRequestException('Invalid receipt image format'), false);
         }
-
         callback(null, true);
       },
-      limits: {
-        fileSize: 3 * 1024 * 1024,
-      },
+      limits: { fileSize: 8 * 1024 * 1024 },
     }),
   )
   async registerPayment(

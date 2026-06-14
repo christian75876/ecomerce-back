@@ -6,36 +6,13 @@ import { ResponseInterceptor } from './common/interceptors/response.interceptor'
 import { HttpErrorFilter } from './common/filters/error.filter';
 import { globalValidationPipes } from './common/pipes/global.pipes';
 import { setupSwagger } from './common/swagger.config';
-import { existsSync, mkdirSync } from 'fs';
-import { join } from 'path';
-import * as express from 'express';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const port = Number(process.env.PORT || 3000);
-  const uploadsPath = join(process.cwd(), 'uploads');
-  const reviewUploadsPath = join(uploadsPath, 'reviews');
-  const purchasePaymentUploadsPath = join(uploadsPath, 'purchase-payments');
-  const productUploadsPath = join(uploadsPath, 'products');
-  const productGalleryPath = join(productUploadsPath, 'gallery');
-
-  if (!existsSync(reviewUploadsPath)) {
-    mkdirSync(reviewUploadsPath, { recursive: true });
-  }
-  if (!existsSync(purchasePaymentUploadsPath)) {
-    mkdirSync(purchasePaymentUploadsPath, { recursive: true });
-  }
-  if (!existsSync(productUploadsPath)) {
-    mkdirSync(productUploadsPath, { recursive: true });
-  }
-  if (!existsSync(productGalleryPath)) {
-    mkdirSync(productGalleryPath, { recursive: true });
-  }
-
   app.setGlobalPrefix('api');
   setupSwagger(app);
   app.enableCors();
-  app.use('/uploads', express.static(uploadsPath));
   app.useGlobalPipes(globalValidationPipes);
   app.useGlobalInterceptors(new ResponseInterceptor());
   app.useGlobalFilters(new HttpErrorFilter());

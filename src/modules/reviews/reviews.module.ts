@@ -7,10 +7,12 @@ import { Review } from './entities/review.entity';
 import { ReviewImage } from './entities/review-image.entity';
 import { ReviewsController } from './reviews.controller';
 import { ReviewsService } from './reviews.service';
+import { CloudinaryModule } from '../cloudinary/cloudinary.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Product, Customer, Order, Review, ReviewImage]),
+    CloudinaryModule,
   ],
   controllers: [ReviewsController],
   providers: [ReviewsService],

@@ -13,6 +13,7 @@ import { Supplier } from '../suppliers/entities/supplier.entity';
 import { Customer } from '../customers/entities/customer.entity';
 import { SaleItem } from '../sales/entities/sale-item.entity';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { CloudinaryModule } from '../cloudinary/cloudinary.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
       SaleItem,
     ]),
     InventoryModule,
+    CloudinaryModule,
   ],
   controllers: [ProductsController],
   providers: [ProductsService, RolesGuard],

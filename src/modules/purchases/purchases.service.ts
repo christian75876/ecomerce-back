@@ -21,6 +21,7 @@ import { CancelPurchaseDto } from './dto/cancel-purchase.dto';
 import { PurchaseStatus } from './entities/purchase.entity';
 import { QueryPurchasesDto } from './dto/query-purchases.dto';
 import { PurchasePaymentMethod } from './entities/purchase-payment.entity';
+import { CloudinaryService } from '../cloudinary/cloudinary.service';
 
 @Injectable()
 export class PurchasesService {
@@ -39,6 +40,7 @@ export class PurchasesService {
     @InjectRepository(InventoryBatch)
     private readonly inventoryBatchesRepository: Repository<InventoryBatch>,
     private readonly inventoryService: InventoryService,
+    private readonly cloudinaryService: CloudinaryService,
   ) {}
 
   async findAll(query: QueryPurchasesDto) {
@@ -263,7 +265,7 @@ export class PurchasesService {
       note: payload.note?.trim() || null,
       reference: payload.reference?.trim() || null,
       receiptImagePath: receiptImage
-        ? `/uploads/purchase-payments/${receiptImage.filename}`
+        ? await this.cloudinaryService.uploadImage(receiptImage.buffer, 'purchase-payments')
         : null,
       paidAt: payload.paidAt ? new Date(payload.paidAt) : new Date(),
     });

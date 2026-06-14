@@ -14,8 +14,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
+import { memoryStorage } from 'multer';
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt.auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -136,20 +135,14 @@ export class ProductsController {
   @Roles('admin', 'seller')
   @UseInterceptors(
     FileInterceptor('image', {
-      storage: diskStorage({
-        destination: './uploads/products',
-        filename: (_req, file, callback) => {
-          const suffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-          callback(null, `${suffix}${extname(file.originalname)}`);
-        },
-      }),
+      storage: memoryStorage(),
       fileFilter: (_req, file, callback) => {
         if (!allowedImageMimeTypes.has(file.mimetype)) {
           return callback(new BadRequestException('Formato de imagen no válido. Use JPEG, PNG o WebP'), false);
         }
         callback(null, true);
       },
-      limits: { fileSize: 5 * 1024 * 1024 },
+      limits: { fileSize: 8 * 1024 * 1024 },
     }),
   )
   async uploadImage(
@@ -172,20 +165,14 @@ export class ProductsController {
   @Roles('admin', 'seller')
   @UseInterceptors(
     FileInterceptor('image', {
-      storage: diskStorage({
-        destination: './uploads/products/gallery',
-        filename: (_req, file, callback) => {
-          const suffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-          callback(null, `${suffix}${extname(file.originalname)}`);
-        },
-      }),
+      storage: memoryStorage(),
       fileFilter: (_req, file, callback) => {
         if (!allowedImageMimeTypes.has(file.mimetype)) {
           return callback(new BadRequestException('Formato no válido. Use JPEG, PNG o WebP'), false);
         }
         callback(null, true);
       },
-      limits: { fileSize: 5 * 1024 * 1024 },
+      limits: { fileSize: 8 * 1024 * 1024 },
     }),
   )
   async addGalleryImage(

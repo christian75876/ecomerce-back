@@ -11,6 +11,7 @@ import { Order, OrderStatus } from '../orders/entities/order.entity';
 import { Review } from './entities/review.entity';
 import { ReviewImage } from './entities/review-image.entity';
 import { CreateReviewDto } from './dto/create-review.dto';
+import { CloudinaryService } from '../cloudinary/cloudinary.service';
 
 @Injectable()
 export class ReviewsService {
@@ -25,6 +26,7 @@ export class ReviewsService {
     private readonly reviewsRepository: Repository<Review>,
     @InjectRepository(ReviewImage)
     private readonly reviewImagesRepository: Repository<ReviewImage>,
+    private readonly cloudinaryService: CloudinaryService,
   ) {}
 
   async getProductReviews(productId: string) {
@@ -141,11 +143,11 @@ export class ReviewsService {
     if (files.length > 0) {
       await this.reviewImagesRepository.delete({ reviewId: savedReview.id });
 
-      const images = files.map((file) =>
-        this.reviewImagesRepository.create({
-          reviewId: savedReview.id,
-          url: `/uploads/reviews/${file.filename}`,
-        }),
+      const urls = await Promise.all(
+        files.map((file) => this.cloudinaryService.uploadImage(file.buffer, 'reviews')),
+      );
+      const images = urls.map((url) =>
+        this.reviewImagesRepository.create({ reviewId: savedReview.id, url }),
       );
       await this.reviewImagesRepository.save(images);
     }

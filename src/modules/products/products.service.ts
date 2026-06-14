@@ -22,6 +22,7 @@ import { Customer } from '../customers/entities/customer.entity';
 import { SaleItem } from '../sales/entities/sale-item.entity';
 import { InventoryReferenceType } from '../inventory/entities/inventory-batch-allocation.entity';
 import { QueryProductOptionsDto } from './dto/query-product-options.dto';
+import { CloudinaryService } from '../cloudinary/cloudinary.service';
 
 const YOUTUBE_REGEX = /^https?:\/\/(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)[\w-]+/;
 const INSTAGRAM_REGEX = /^https?:\/\/(www\.)?instagram\.com\/(p|reel|tv)\/[\w-]+/;
@@ -54,6 +55,7 @@ export class ProductsService {
     @InjectRepository(SaleItem)
     private readonly saleItemsRepository: Repository<SaleItem>,
     private readonly inventoryService: InventoryService,
+    private readonly cloudinaryService: CloudinaryService,
   ) {}
 
   async findAll(filters: {
@@ -503,7 +505,7 @@ export class ProductsService {
 
   async uploadImage(id: string, file: Express.Multer.File) {
     const product = await this.findEntity(id);
-    product.imageUrl = `/uploads/products/${file.filename}`;
+    product.imageUrl = await this.cloudinaryService.uploadImage(file.buffer, 'products');
     return this.productsRepository.save(product);
   }
 
@@ -538,11 +540,8 @@ export class ProductsService {
   async addGalleryImage(productId: string, file: Express.Multer.File) {
     await this.findOne(productId);
     const count = await this.imagesRepository.count({ where: { productId } });
-    const image = this.imagesRepository.create({
-      productId,
-      imageUrl: `/uploads/products/gallery/${file.filename}`,
-      order: count,
-    });
+    const imageUrl = await this.cloudinaryService.uploadImage(file.buffer, 'products/gallery');
+    const image = this.imagesRepository.create({ productId, imageUrl, order: count });
     return this.imagesRepository.save(image);
   }
 

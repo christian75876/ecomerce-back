@@ -3,6 +3,8 @@ import { StoresService } from './stores.service';
 import { CreateStoreDto } from './dto/create-store.dto';
 import { UpdateStoreDto } from './dto/update-store.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt.auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from 'src/common/decorators/roles.decorator';
 
 @Controller('stores')
 export class StoresController {
@@ -21,13 +23,15 @@ export class StoresController {
   }
 
   @Post()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
   async create(@Body() payload: CreateStoreDto) {
     return this.storesService.create(payload);
   }
 
   @Patch(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
   async update(@Param('id') id: string, @Body() payload: UpdateStoreDto) {
     return this.storesService.update(id, payload);
   }

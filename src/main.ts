@@ -16,12 +16,20 @@ async function bootstrap() {
   const uploadsPath = join(process.cwd(), 'uploads');
   const reviewUploadsPath = join(uploadsPath, 'reviews');
   const purchasePaymentUploadsPath = join(uploadsPath, 'purchase-payments');
+  const productUploadsPath = join(uploadsPath, 'products');
+  const productGalleryPath = join(productUploadsPath, 'gallery');
 
   if (!existsSync(reviewUploadsPath)) {
     mkdirSync(reviewUploadsPath, { recursive: true });
   }
   if (!existsSync(purchasePaymentUploadsPath)) {
     mkdirSync(purchasePaymentUploadsPath, { recursive: true });
+  }
+  if (!existsSync(productUploadsPath)) {
+    mkdirSync(productUploadsPath, { recursive: true });
+  }
+  if (!existsSync(productGalleryPath)) {
+    mkdirSync(productGalleryPath, { recursive: true });
   }
 
   app.setGlobalPrefix('api');

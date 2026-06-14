@@ -1,5 +1,7 @@
 import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt.auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from 'src/common/decorators/roles.decorator';
 import { InventoryService } from './inventory.service';
 import { CreateInventoryMovementDto } from './dto/create-inventory-movement.dto';
 import { CreateInventoryEntryDto } from './dto/create-inventory-entry.dto';
@@ -31,13 +33,15 @@ export class InventoryController {
   }
 
   @Post('entries')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'seller')
   async registerEntry(@Body() payload: CreateInventoryEntryDto) {
     return this.inventoryService.registerEntry(payload);
   }
 
   @Post('movements')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'seller')
   async registerMovement(
     @Body() createInventoryMovementDto: CreateInventoryMovementDto,
   ) {
@@ -45,7 +49,8 @@ export class InventoryController {
   }
 
   @Post('legacy/backfill')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
   async backfillLegacyBatches() {
     return this.inventoryService.backfillLegacyBatches();
   }

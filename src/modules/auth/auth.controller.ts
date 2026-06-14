@@ -59,7 +59,7 @@ export class AuthController {
     return await this.authService.getAuthenticatedProfile(req.user.userId);
   }
 
-  @Post('RecoverPasswords')
+  @Post('recover-passwords')
   async createToken(@Body() body: RecoverPasswordDto) {
     const email = String(body.email).trim();
     return await this.authService.createToken(email);

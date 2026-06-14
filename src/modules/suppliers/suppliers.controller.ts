@@ -3,10 +3,13 @@ import { SuppliersService } from './suppliers.service';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { UpdateSupplierDto } from './dto/update-supplier.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt.auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from 'src/common/decorators/roles.decorator';
 import { QuerySupplierOptionsDto } from './dto/query-supplier-options.dto';
 
 @Controller('suppliers')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('admin', 'seller')
 export class SuppliersController {
   constructor(private readonly suppliersService: SuppliersService) {}
 

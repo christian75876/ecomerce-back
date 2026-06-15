@@ -134,10 +134,10 @@ export class AuthService {
   }
 
   async getAuthenticatedProfile(userId: number) {
-    const user = await this.userRepository.findOne({
-      where: { id: userId },
-      relations: { role: true },
-    });
+    const [user, customer] = await Promise.all([
+      this.userRepository.findOne({ where: { id: userId }, relations: { role: true } }),
+      this.customerRepository.findOne({ where: { userId } }),
+    ]);
 
     if (!user) {
       throw new NotFoundException('Authenticated user not found');
@@ -150,6 +150,37 @@ export class AuthService {
       role: user.role?.name ?? null,
       isEmailVerified: user.isEmailVerified,
       createdAt: user.createdAt,
+      customer: customer
+        ? {
+            id: customer.id,
+            firstName: customer.firstName,
+            lastName: customer.lastName,
+            phone: customer.phone,
+          }
+        : null,
+    };
+  }
+
+  async updateMyProfile(
+    userId: number,
+    dto: import('./dto/update-my-profile.auth.dto').UpdateMyProfileDto,
+  ) {
+    const customer = await this.customerRepository.findOne({ where: { userId } });
+    if (!customer) {
+      throw new NotFoundException('Profile not found');
+    }
+
+    if (typeof dto.firstName === 'string') customer.firstName = dto.firstName.trim();
+    if (typeof dto.lastName === 'string') customer.lastName = dto.lastName.trim();
+    if (typeof dto.phone === 'string') customer.phone = dto.phone.trim() || null;
+
+    const saved = await this.customerRepository.save(customer);
+
+    return {
+      id: saved.id,
+      firstName: saved.firstName,
+      lastName: saved.lastName,
+      phone: saved.phone,
     };
   }
 

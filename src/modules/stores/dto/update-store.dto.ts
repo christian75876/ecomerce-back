@@ -1,5 +1,6 @@
 import {
   IsBoolean,
+  IsDateString,
   IsEmail,
   IsEnum,
   IsOptional,
@@ -103,6 +104,14 @@ export class UpdateStoreDto {
   @IsOptional()
   @IsBoolean()
   isAdultContent?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isPremiumAdvertiser?: boolean;
+
+  @IsOptional()
+  @IsDateString()
+  subscriptionExpiresAt?: string | null;
 
   @IsOptional()
   @IsEnum(StoreType)

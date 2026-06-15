@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, MoreThan, Or, Repository } from 'typeorm';
 import { Store, StoreType } from './entities/store.entity';
 import { CreateStoreDto } from './dto/create-store.dto';
 import { UpdateStoreDto } from './dto/update-store.dto';
@@ -19,10 +19,13 @@ export class StoresService {
   ) {}
 
   async findAll(active?: boolean) {
-    const where =
-      typeof active === 'boolean'
-        ? { isActive: active }
-        : {};
+    const where: Record<string, unknown> =
+      typeof active === 'boolean' ? { isActive: active } : {};
+
+    if (active === true) {
+      // Exclude stores with an expired subscription
+      where.subscriptionExpiresAt = Or(IsNull(), MoreThan(new Date()));
+    }
 
     return this.storesRepository.find({
       where,
@@ -45,7 +48,9 @@ export class StoresService {
       where: publicOnly ? { slug, isActive: true } : { slug },
     });
 
-    if (!store) {
+    if (!store) throw new NotFoundException('Store not found');
+
+    if (publicOnly && store.subscriptionExpiresAt && new Date(store.subscriptionExpiresAt) < new Date()) {
       throw new NotFoundException('Store not found');
     }
 
@@ -168,6 +173,14 @@ export class StoresService {
         typeof payload.isAdultContent === 'boolean'
           ? payload.isAdultContent
           : store.isAdultContent,
+      isPremiumAdvertiser:
+        typeof payload.isPremiumAdvertiser === 'boolean'
+          ? payload.isPremiumAdvertiser
+          : store.isPremiumAdvertiser,
+      subscriptionExpiresAt:
+        payload.subscriptionExpiresAt !== undefined
+          ? (payload.subscriptionExpiresAt ? new Date(payload.subscriptionExpiresAt) : null)
+          : store.subscriptionExpiresAt,
       storeType: payload.storeType ?? store.storeType,
       menuPdfUrl:
         typeof payload.menuPdfUrl === 'string'

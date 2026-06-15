@@ -2,6 +2,7 @@
 import {
   Controller,
   Post,
+  Patch,
   Res,
   HttpCode,
   Req,
@@ -20,6 +21,7 @@ import { VerifyRecoverOtpDto } from './dto/verifyRecoverOtp.auth.dto';
 import { ResetPasswordDto } from './dto/resetPassword.auth.dto';
 import { SwaggerLogout, SwaggerRegister } from './docs/auth.swagger';
 import { JwtAuthGuard } from './guards/jwt.auth.guard';
+import { UpdateMyProfileDto } from './dto/update-my-profile.auth.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -57,6 +59,15 @@ export class AuthController {
     user: { userId: number };
   }) {
     return await this.authService.getAuthenticatedProfile(req.user.userId);
+  }
+
+  @Patch('me')
+  @UseGuards(JwtAuthGuard)
+  async updateMyProfile(
+    @Req() req: Request & { user: { userId: number } },
+    @Body() dto: UpdateMyProfileDto,
+  ) {
+    return await this.authService.updateMyProfile(req.user.userId, dto);
   }
 
   @Post('recover-passwords')

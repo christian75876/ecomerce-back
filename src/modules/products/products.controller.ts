@@ -183,6 +183,16 @@ export class ProductsController {
     return this.productsService.addGalleryImage(id, file);
   }
 
+  @Patch(':id/gallery/reorder')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'seller')
+  async reorderGallery(
+    @Param('id') id: string,
+    @Body() body: { imageIds: string[] },
+  ) {
+    return this.productsService.reorderGallery(id, body.imageIds);
+  }
+
   @Delete(':id/gallery/:imageId')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'seller')

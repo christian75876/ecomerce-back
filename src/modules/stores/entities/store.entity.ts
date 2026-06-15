@@ -143,6 +143,12 @@ export class Store {
   @Column({ name: 'is_adult_content', type: 'boolean', default: false })
   isAdultContent: boolean;
 
+  @Column({ name: 'is_premium_advertiser', type: 'boolean', default: false })
+  isPremiumAdvertiser: boolean;
+
+  @Column({ name: 'subscription_expires_at', type: 'timestamp', nullable: true })
+  subscriptionExpiresAt: Date | null;
+
   @Column({ name: 'user_id', type: 'int', nullable: true })
   userId: number | null;
 

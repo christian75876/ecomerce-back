@@ -1,6 +1,7 @@
 import {
   IsDateString,
   IsBoolean,
+  IsInt,
   IsNumber,
   IsOptional,
   IsString,
@@ -9,6 +10,7 @@ import {
   Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+
 
 export class UpdateProductDto {
   @IsOptional()
@@ -83,4 +85,10 @@ export class UpdateProductDto {
   @IsOptional()
   @IsDateString()
   initialExpiresAt?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  lowStockThreshold?: number;
 }

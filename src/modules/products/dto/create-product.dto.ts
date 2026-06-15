@@ -1,6 +1,7 @@
 import {
   IsDateString,
   IsBoolean,
+  IsInt,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -84,6 +85,12 @@ export class CreateProductDto {
   @IsOptional()
   @IsBoolean()
   trackBatches?: boolean;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  lowStockThreshold?: number;
 
   @IsOptional()
   @IsDateString()

@@ -11,6 +11,7 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { InventoryReferenceType } from '../inventory/entities/inventory-batch-allocation.entity';
 import { NotificationsService } from '../notifications/notifications.service';
+import { CouponsService } from '../coupons/coupons.service';
 
 @Injectable()
 export class OrdersService {
@@ -26,6 +27,7 @@ export class OrdersService {
     private readonly orderItemsRepository: Repository<OrderItem>,
     private readonly inventoryService: InventoryService,
     private readonly notificationsService: NotificationsService,
+    private readonly couponsService: CouponsService,
   ) {}
 
   async findAll() {
@@ -83,6 +85,8 @@ export class OrdersService {
   async create(createOrderDto: CreateOrderDto) {
     let notifyCustomer: Customer;
     let notifyStores: Store[] = [];
+    let appliedCouponId: string | null = null;
+    let appliedCouponCode: string | null = null;
 
     const savedOrderId = await this.dataSource.transaction(async (manager) => {
       const customer = await this.resolveCustomer(createOrderDto, manager);
@@ -125,15 +129,39 @@ export class OrdersService {
 
       notifyStores = [...storeMap.values()];
 
+      let discountAmount = 0;
+
+      if (createOrderDto.couponCode?.trim()) {
+        try {
+          const { coupon, discountAmount: discount } = await this.couponsService.validate(
+            createOrderDto.couponCode,
+            total,
+          );
+          discountAmount = discount;
+          appliedCouponCode = coupon.code;
+          appliedCouponId = coupon.id;
+        } catch {
+          throw new BadRequestException(
+            `Cupón inválido: ${createOrderDto.couponCode}`,
+          );
+        }
+      }
+
+      const finalTotal = Math.max(0, total - discountAmount);
+
       const order = manager.create(Order, {
         customerId: customer.id,
-        total,
+        total: finalTotal,
         status: OrderStatus.PENDING,
         deliveryMethod: createOrderDto.deliveryMethod ?? null,
         deliveryAddress: createOrderDto.deliveryAddress?.trim() || null,
         deliveryCity: createOrderDto.deliveryCity?.trim() || null,
         deliveryDepartment: createOrderDto.deliveryDepartment?.trim() || null,
         deliveryNotes: createOrderDto.deliveryNotes?.trim() || null,
+        deliveryLat: createOrderDto.deliveryLat ?? null,
+        deliveryLng: createOrderDto.deliveryLng ?? null,
+        couponCode: appliedCouponCode,
+        discountAmount,
       });
       const savedOrder = await manager.save(order);
 
@@ -158,6 +186,11 @@ export class OrdersService {
     });
 
     const fullOrder = await this.findOne(savedOrderId);
+
+    // Increment coupon usage (outside transaction to avoid blocking)
+    if (appliedCouponId) {
+      void this.couponsService.incrementUsage(appliedCouponId);
+    }
 
     // Fire-and-forget: notify via SSE + WhatsApp
     void this.notificationsService.notifyNewOrder(fullOrder, notifyCustomer!, notifyStores);

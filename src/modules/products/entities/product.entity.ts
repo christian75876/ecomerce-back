@@ -53,6 +53,9 @@ export class Product {
   @Column({ name: 'track_batches', type: 'boolean', default: true })
   trackBatches: boolean;
 
+  @Column({ name: 'low_stock_threshold', type: 'int', nullable: true })
+  lowStockThreshold: number | null;
+
   @Column({ name: 'category_id', type: 'uuid' })
   categoryId: string;
 

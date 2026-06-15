@@ -68,6 +68,18 @@ export class Order {
   @Column({ name: 'delivery_notes', type: 'text', nullable: true })
   deliveryNotes: string | null;
 
+  @Column({ name: 'delivery_lat', type: 'float', nullable: true })
+  deliveryLat: number | null;
+
+  @Column({ name: 'delivery_lng', type: 'float', nullable: true })
+  deliveryLng: number | null;
+
+  @Column({ name: 'coupon_code', type: 'varchar', length: 50, nullable: true })
+  couponCode: string | null;
+
+  @Column({ name: 'discount_amount', type: 'decimal', precision: 12, scale: 2, default: 0 })
+  discountAmount: number;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 

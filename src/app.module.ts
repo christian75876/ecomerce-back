@@ -22,6 +22,8 @@ import { EmailModule } from './modules/email/email.module';
 import { InvitationsModule } from './modules/invitations/invitations.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { MenuCategoriesModule } from './modules/menu-categories/menu-categories.module';
+import { CouponsModule } from './modules/coupons/coupons.module';
+import { AppConfigModule } from './modules/app-config/app-config.module';
 
 @Module({
   imports: [
@@ -48,6 +50,8 @@ import { MenuCategoriesModule } from './modules/menu-categories/menu-categories.
     AuditModule,
     NotificationsModule,
     MenuCategoriesModule,
+    CouponsModule,
+    AppConfigModule,
   ],
   providers: [
     AppInitializer,

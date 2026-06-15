@@ -4,9 +4,11 @@ import {
   IsEmail,
   IsEnum,
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
   IsUUID,
+  Max,
   MaxLength,
   Min,
   ValidateNested,
@@ -81,4 +83,21 @@ export class CreateOrderDto {
   @IsString()
   @MaxLength(500)
   deliveryNotes?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  deliveryLat?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  deliveryLng?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  couponCode?: string;
 }

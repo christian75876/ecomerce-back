@@ -93,7 +93,13 @@ export class ProductsService {
     let products = await this.productsRepository.find({ where, order });
 
     if (filters.active) {
-      products = products.filter((product) => !product.store || product.store.isActive);
+      const now = new Date();
+      products = products.filter((product) => {
+        if (!product.store) return true;
+        if (!product.store.isActive) return false;
+        const exp = product.store.subscriptionExpiresAt;
+        return !exp || new Date(exp) > now;
+      });
     }
 
     if (filters.minPrice !== undefined) {
@@ -103,8 +109,16 @@ export class ProductsService {
       products = products.filter((p) => Number(p.price) <= filters.maxPrice!);
     }
 
-    const stockMap = await this.getStockMap(products.map((p) => p.id));
-    return products.map((p) => ({ ...p, availableQuantity: stockMap.get(p.id) ?? 0 }));
+    const [stockMap, ratingMap] = await Promise.all([
+      this.getStockMap(products.map((p) => p.id)),
+      this.getRatingMap(products.map((p) => p.id)),
+    ]);
+    return products.map((p) => ({
+      ...p,
+      availableQuantity: stockMap.get(p.id) ?? 0,
+      averageRating: ratingMap.get(p.id)?.averageRating ?? null,
+      reviewCount: ratingMap.get(p.id)?.reviewCount ?? 0,
+    }));
   }
 
   private async getStockMap(productIds: string[]): Promise<Map<string, number>> {
@@ -122,10 +136,43 @@ export class ProductsService {
     return map;
   }
 
+  private async getRatingMap(
+    productIds: string[],
+  ): Promise<Map<string, { averageRating: number; reviewCount: number }>> {
+    if (productIds.length === 0) return new Map();
+    const rows = await this.imagesRepository.manager
+      .createQueryBuilder()
+      .select('review.product_id', 'productId')
+      .addSelect('ROUND(AVG(review.rating)::numeric, 1)', 'averageRating')
+      .addSelect('COUNT(review.id)::int', 'reviewCount')
+      .from('reviews', 'review')
+      .where('review.product_id IN (:...ids)', { ids: productIds })
+      .andWhere('review.is_visible = :visible', { visible: true })
+      .groupBy('review.product_id')
+      .getRawMany<{ productId: string; averageRating: string; reviewCount: string }>();
+    const map = new Map<string, { averageRating: number; reviewCount: number }>();
+    rows.forEach((row) =>
+      map.set(row.productId, {
+        averageRating: Number(row.averageRating),
+        reviewCount: Number(row.reviewCount),
+      }),
+    );
+    return map;
+  }
+
   async findOne(id: string) {
     const product = await this.findEntity(id);
-    const stock = await this.inventoryService.getCurrentStock(id);
-    return { ...product, availableQuantity: stock };
+    const [stock, ratingMap] = await Promise.all([
+      this.inventoryService.getCurrentStock(id),
+      this.getRatingMap([id]),
+    ]);
+    const rating = ratingMap.get(id);
+    return {
+      ...product,
+      availableQuantity: stock,
+      averageRating: rating?.averageRating ?? null,
+      reviewCount: rating?.reviewCount ?? 0,
+    };
   }
 
   private async findEntity(id: string): Promise<Product> {
@@ -309,6 +356,7 @@ export class ProductsService {
         storeId: createProductDto.storeId ?? null,
         supplierId: createProductDto.supplierId ?? null,
         menuCategoryId: createProductDto.menuCategoryId ?? null,
+        lowStockThreshold: typeof createProductDto.lowStockThreshold === 'number' ? createProductDto.lowStockThreshold : null,
       });
 
       const savedProduct = await manager.getRepository(Product).save(product);
@@ -385,6 +433,12 @@ export class ProductsService {
         typeof updateProductDto.imageUrl === 'string'
           ? updateProductDto.imageUrl.trim() || null
           : product.imageUrl,
+      lowStockThreshold:
+        typeof updateProductDto.lowStockThreshold === 'number'
+          ? updateProductDto.lowStockThreshold
+          : updateProductDto.lowStockThreshold === null
+            ? null
+            : product.lowStockThreshold,
     });
 
     return this.productsRepository.save(product);
@@ -547,6 +601,16 @@ export class ProductsService {
     const imageUrl = await this.cloudinaryService.uploadImage(file.buffer, 'products/gallery');
     const image = this.imagesRepository.create({ productId, imageUrl, order: count });
     return this.imagesRepository.save(image);
+  }
+
+  async reorderGallery(productId: string, imageIds: string[]) {
+    await this.findOne(productId);
+    await Promise.all(
+      imageIds.map((id, index) =>
+        this.imagesRepository.update({ id, productId }, { order: index }),
+      ),
+    );
+    return this.getGallery(productId);
   }
 
   async removeGalleryImage(productId: string, imageId: string) {

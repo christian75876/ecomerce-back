@@ -78,6 +78,7 @@ export class InventoryService {
         activeBatchCount: activeBatches.length,
         nextExpiration,
         inventoryValue: Number(inventoryValue.toFixed(2)),
+        lowStockThreshold: product.lowStockThreshold,
       };
     });
   }

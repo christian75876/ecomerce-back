@@ -1,4 +1,19 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { StoresService } from './stores.service';
 import { CreateStoreDto } from './dto/create-store.dto';
 import { UpdateStoreDto } from './dto/update-store.dto';
@@ -6,6 +21,8 @@ import { UpdateStoreNotificationsDto } from './dto/update-store-notifications.dt
 import { JwtAuthGuard } from '../auth/guards/jwt.auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
+
+const allowedImageMimeTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 @Controller('stores')
 export class StoresController {
@@ -53,5 +70,55 @@ export class StoresController {
   ) {
     const isAdmin = req.user.role === 'admin';
     return this.storesService.updateNotifications(id, payload, req.user.userId as number, isAdmin);
+  }
+
+  @Post(':id/logo')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'seller')
+  @UseInterceptors(
+    FileInterceptor('image', {
+      storage: memoryStorage(),
+      fileFilter: (_req, file, callback) => {
+        if (!allowedImageMimeTypes.has(file.mimetype)) {
+          return callback(new BadRequestException('Formato no válido. Use JPEG, PNG o WebP'), false);
+        }
+        callback(null, true);
+      },
+      limits: { fileSize: 5 * 1024 * 1024 },
+    }),
+  )
+  async uploadLogo(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: any,
+  ) {
+    if (!file) throw new BadRequestException('No se recibió ningún archivo');
+    const isAdmin = req.user.role === 'admin';
+    return this.storesService.uploadLogo(id, file, req.user.userId as number, isAdmin);
+  }
+
+  @Post(':id/banner')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'seller')
+  @UseInterceptors(
+    FileInterceptor('image', {
+      storage: memoryStorage(),
+      fileFilter: (_req, file, callback) => {
+        if (!allowedImageMimeTypes.has(file.mimetype)) {
+          return callback(new BadRequestException('Formato no válido. Use JPEG, PNG o WebP'), false);
+        }
+        callback(null, true);
+      },
+      limits: { fileSize: 8 * 1024 * 1024 },
+    }),
+  )
+  async uploadBanner(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: any,
+  ) {
+    if (!file) throw new BadRequestException('No se recibió ningún archivo');
+    const isAdmin = req.user.role === 'admin';
+    return this.storesService.uploadBanner(id, file, req.user.userId as number, isAdmin);
   }
 }

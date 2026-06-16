@@ -10,12 +10,14 @@ import { Store, StoreType } from './entities/store.entity';
 import { CreateStoreDto } from './dto/create-store.dto';
 import { UpdateStoreDto } from './dto/update-store.dto';
 import { UpdateStoreNotificationsDto } from './dto/update-store-notifications.dto';
+import { CloudinaryService } from '../cloudinary/cloudinary.service';
 
 @Injectable()
 export class StoresService {
   constructor(
     @InjectRepository(Store)
     private readonly storesRepository: Repository<Store>,
+    private readonly cloudinaryService: CloudinaryService,
   ) {}
 
   async findAll(active?: boolean) {
@@ -196,9 +198,31 @@ export class StoresService {
       coverStyle: payload.coverStyle ?? store.coverStyle,
       wppNotificationsEnabled: typeof payload.wppNotificationsEnabled === 'boolean' ? payload.wppNotificationsEnabled : store.wppNotificationsEnabled,
       wppApiKey: typeof payload.wppApiKey === 'string' ? payload.wppApiKey.trim() || null : store.wppApiKey,
+      lat: payload.lat !== undefined ? payload.lat : store.lat,
+      lng: payload.lng !== undefined ? payload.lng : store.lng,
+      addressText: typeof payload.addressText === 'string' ? payload.addressText.trim() || null : store.addressText,
     });
 
     return this.storesRepository.save(store);
+  }
+
+  async uploadLogo(id: string, file: Express.Multer.File, userId: number, isAdmin: boolean) {
+    const store = await this.findOneOwned(id, userId, isAdmin);
+    store.logoUrl = await this.cloudinaryService.uploadImage(file.buffer, 'stores/logos');
+    return this.storesRepository.save(store);
+  }
+
+  async uploadBanner(id: string, file: Express.Multer.File, userId: number, isAdmin: boolean) {
+    const store = await this.findOneOwned(id, userId, isAdmin);
+    store.bannerUrl = await this.cloudinaryService.uploadImage(file.buffer, 'stores/banners');
+    return this.storesRepository.save(store);
+  }
+
+  private async findOneOwned(id: string, userId: number, isAdmin: boolean): Promise<Store> {
+    const store = await this.storesRepository.findOne({ where: { id } });
+    if (!store) throw new NotFoundException('Tienda no encontrada');
+    if (!isAdmin && store.userId !== userId) throw new ForbiddenException('No tienes permiso');
+    return store;
   }
 
   private async ensureUniqueSlug(slug: string, currentStoreId?: string) {

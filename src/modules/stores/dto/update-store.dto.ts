@@ -3,6 +3,7 @@ import {
   IsDateString,
   IsEmail,
   IsEnum,
+  IsNumber,
   IsOptional,
   IsString,
   Matches,
@@ -130,4 +131,17 @@ export class UpdateStoreDto {
   @IsString()
   @MaxLength(100)
   wppApiKey?: string;
+
+  @IsOptional()
+  @IsNumber()
+  lat?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  lng?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  addressText?: string | null;
 }

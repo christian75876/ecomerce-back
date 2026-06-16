@@ -158,6 +158,15 @@ export class Store {
   @Column({ name: 'wpp_api_key', type: 'varchar', length: 100, nullable: true })
   wppApiKey: string | null;
 
+  @Column({ name: 'lat', type: 'float', nullable: true })
+  lat: number | null;
+
+  @Column({ name: 'lng', type: 'float', nullable: true })
+  lng: number | null;
+
+  @Column({ name: 'address_text', type: 'varchar', length: 300, nullable: true })
+  addressText: string | null;
+
   @OneToMany(() => Product, (product) => product.store)
   products: Product[];
 

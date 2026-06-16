@@ -4,6 +4,7 @@ import {
   IsEnum,
   IsInt,
   IsNotEmpty,
+  IsNumber,
   IsOptional,
   IsString,
   Matches,
@@ -114,4 +115,17 @@ export class CreateStoreDto {
   @IsOptional()
   @IsInt()
   userId?: number;
+
+  @IsOptional()
+  @IsNumber()
+  lat?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  lng?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  addressText?: string | null;
 }

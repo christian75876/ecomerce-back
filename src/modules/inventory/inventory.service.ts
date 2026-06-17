@@ -22,6 +22,7 @@ import {
 import { CreateInventoryEntryDto } from './dto/create-inventory-entry.dto';
 import { QueryInventoryBatchesDto } from './dto/query-inventory-batches.dto';
 import { QueryExpiringInventoryDto } from './dto/query-expiring-inventory.dto';
+import { PaginatedResultDto } from 'src/common/dtos/paginated-result.dto';
 import { Supplier } from '../suppliers/entities/supplier.entity';
 
 @Injectable()
@@ -39,27 +40,33 @@ export class InventoryService {
     private readonly suppliersRepository: Repository<Supplier>,
   ) {}
 
-  async getInventorySummary() {
-    const [products, batches] = await Promise.all([
-      this.productsRepository.find({
-        order: { createdAt: 'DESC' },
-      }),
-      this.batchesRepository.find({
-        order: { receivedAt: 'DESC' },
-      }),
-    ]);
+  async getInventorySummary(page = 1, limit = 20): Promise<PaginatedResultDto<Record<string, unknown>>> {
+    const skip = (page - 1) * limit;
 
-    return products.map((product) => {
+    const [products, totalItems] = await this.productsRepository.findAndCount({
+      order: { createdAt: 'DESC' },
+      skip,
+      take: limit,
+    });
+
+    const productIds = products.map((p) => p.id);
+    const batches = productIds.length > 0
+      ? await this.batchesRepository.find({
+          where: productIds.map((id) => ({ productId: id })),
+          order: { receivedAt: 'DESC' },
+        })
+      : [];
+
+    const items = products.map((product) => {
       const productBatches = batches.filter((batch) => batch.productId === product.id);
       const activeBatches = productBatches.filter((batch) => batch.availableQuantity > 0);
-      const nextExpiration = activeBatches
-        .filter((batch) => batch.expiresAt)
-        .sort((a, b) => {
-          if (!a.expiresAt || !b.expiresAt) {
-            return 0;
-          }
-          return new Date(a.expiresAt).getTime() - new Date(b.expiresAt).getTime();
-        })[0]?.expiresAt ?? null;
+      const nextExpiration =
+        activeBatches
+          .filter((batch) => batch.expiresAt)
+          .sort((a, b) => {
+            if (!a.expiresAt || !b.expiresAt) return 0;
+            return new Date(a.expiresAt).getTime() - new Date(b.expiresAt).getTime();
+          })[0]?.expiresAt ?? null;
 
       const inventoryValue = activeBatches.reduce(
         (acc, batch) => acc + Number(batch.unitCost) * batch.availableQuantity,
@@ -81,67 +88,104 @@ export class InventoryService {
         lowStockThreshold: product.lowStockThreshold,
       };
     });
-  }
 
-  async getBatches(filters: QueryInventoryBatchesDto) {
-    const batches = await this.batchesRepository.find({
-      order: {
-        expiresAt: 'ASC',
-        receivedAt: 'ASC',
+    return {
+      items,
+      pagination: {
+        totalItems,
+        itemCount: items.length,
+        itemsPerPage: limit,
+        totalPages: Math.max(1, Math.ceil(totalItems / limit)),
+        currentPage: page,
       },
-    });
-
-    return batches.filter((batch) => {
-      if (filters.productId && batch.productId !== filters.productId) {
-        return false;
-      }
-      if (filters.storeId && batch.storeId !== filters.storeId) {
-        return false;
-      }
-      if (filters.supplierId && batch.supplierId !== filters.supplierId) {
-        return false;
-      }
-      if (filters.status && batch.status !== filters.status) {
-        return false;
-      }
-      return true;
-    });
+    };
   }
 
-  async getExpiringBatches(filters: QueryExpiringInventoryDto) {
+  async getBatches(filters: QueryInventoryBatchesDto): Promise<PaginatedResultDto<Record<string, unknown>>> {
+    const page = filters.page ?? 1;
+    const limit = Math.min(filters.limit ?? 20, 500);
+    const skip = (page - 1) * limit;
+
+    const where: Record<string, unknown> = {};
+    if (filters.productId) where.productId = filters.productId;
+    if (filters.storeId) where.storeId = filters.storeId;
+    if (filters.supplierId) where.supplierId = filters.supplierId;
+    if (filters.status) where.status = filters.status;
+
+    const [batches, totalItems] = await this.batchesRepository.findAndCount({
+      where,
+      order: { expiresAt: 'ASC', receivedAt: 'ASC' },
+      skip,
+      take: limit,
+    });
+
+    return {
+      items: batches as unknown as Record<string, unknown>[],
+      pagination: {
+        totalItems,
+        itemCount: batches.length,
+        itemsPerPage: limit,
+        totalPages: Math.max(1, Math.ceil(totalItems / limit)),
+        currentPage: page,
+      },
+    };
+  }
+
+  async getExpiringBatches(filters: QueryExpiringInventoryDto): Promise<PaginatedResultDto<Record<string, unknown>>> {
+    const page = filters.page ?? 1;
+    const limit = Math.min(filters.limit ?? 20, 500);
+    const skip = (page - 1) * limit;
     const days = filters.days ?? 30;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const threshold = new Date(today);
     threshold.setDate(threshold.getDate() + days);
 
-    const expiringBatches = await this.batchesRepository.find({
-      where: {
-        expiresAt: LessThanOrEqual(threshold),
-        availableQuantity: MoreThan(0),
-      },
-      order: {
-        expiresAt: 'ASC',
-        receivedAt: 'ASC',
-      },
-    });
+    const qb = this.batchesRepository
+      .createQueryBuilder('batch')
+      .where('batch.expiresAt <= :threshold', { threshold })
+      .andWhere('batch.availableQuantity > 0')
+      .andWhere('batch.expiresAt IS NOT NULL');
 
-    return expiringBatches.filter((batch) => {
-      if (!batch.expiresAt) {
-        return false;
-      }
-      if (filters.storeId && batch.storeId !== filters.storeId) {
-        return false;
-      }
-      return true;
-    });
+    if (filters.storeId) {
+      qb.andWhere('batch.storeId = :storeId', { storeId: filters.storeId });
+    }
+
+    qb.orderBy('batch.expiresAt', 'ASC').addOrderBy('batch.receivedAt', 'ASC');
+
+    const [batches, totalItems] = await qb.skip(skip).take(limit).getManyAndCount();
+
+    return {
+      items: batches as unknown as Record<string, unknown>[],
+      pagination: {
+        totalItems,
+        itemCount: batches.length,
+        itemsPerPage: limit,
+        totalPages: Math.max(1, Math.ceil(totalItems / limit)),
+        currentPage: page,
+      },
+    };
   }
 
-  async getMovements(productId?: string) {
-    return this.inventoryRepository.find({
+  async getMovements(productId?: string, page = 1, limit = 20): Promise<PaginatedResultDto<Record<string, unknown>>> {
+    const skip = (page - 1) * limit;
+    const [movements, totalItems] = await this.inventoryRepository.findAndCount({
       where: productId ? { productId } : {},
       order: { createdAt: 'DESC' },
+      skip,
+      take: limit,
+      relations: ['product', 'batch'],
     });
+    return {
+      items: movements as unknown as Record<string, unknown>[],
+      pagination: {
+        totalItems,
+        itemCount: movements.length,
+        itemsPerPage: limit,
+        totalPages: Math.max(1, Math.ceil(totalItems / limit)),
+        currentPage: page,
+      },
+    };
   }
 
   async registerEntry(createInventoryEntryDto: CreateInventoryEntryDto) {

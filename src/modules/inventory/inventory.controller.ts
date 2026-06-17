@@ -13,13 +13,27 @@ export class InventoryController {
   constructor(private readonly inventoryService: InventoryService) {}
 
   @Get()
-  async getInventorySummary() {
-    return this.inventoryService.getInventorySummary();
+  async getInventorySummary(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.inventoryService.getInventorySummary(
+      page ? Number(page) : 1,
+      limit ? Math.min(Number(limit), 500) : 20,
+    );
   }
 
   @Get('movements')
-  async getMovements(@Query('productId') productId?: string) {
-    return this.inventoryService.getMovements(productId);
+  async getMovements(
+    @Query('productId') productId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.inventoryService.getMovements(
+      productId,
+      page ? Number(page) : 1,
+      limit ? Math.min(Number(limit), 500) : 20,
+    );
   }
 
   @Get('batches')

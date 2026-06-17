@@ -19,6 +19,7 @@ type SalesPoint = {
   pos: number;
   online: number;
   total: number;
+  profit: number;
 };
 
 @Injectable()
@@ -77,9 +78,13 @@ export class DashboardService {
   async getAnalytics(query: QueryDashboardAnalyticsDto) {
     const criticalStockThreshold = query.criticalStockThreshold ?? 5;
     const rotationDays = query.rotationDays ?? 30;
-    const endDate = query.endDate ? new Date(query.endDate) : new Date();
+    // Date-only strings ("YYYY-MM-DD") are parsed as UTC midnight by the JS engine,
+    // making setHours() operate on the wrong local day. Appending T00:00:00 (no Z)
+    // forces local-time parsing. Full ISO strings (from getSummary) are left as-is.
+    const parseDate = (s: string) => (s.length === 10 ? new Date(`${s}T00:00:00`) : new Date(s));
+    const endDate = query.endDate ? parseDate(query.endDate) : new Date();
     const startDate = query.startDate
-      ? new Date(query.startDate)
+      ? parseDate(query.startDate)
       : new Date(endDate.getTime() - 29 * 24 * 60 * 60 * 1000);
 
     startDate.setHours(0, 0, 0, 0);
@@ -99,7 +104,10 @@ export class DashboardService {
       stores,
     ] = await Promise.all([
       this.productsRepository.find({ order: { createdAt: 'DESC' } }),
-      this.ordersRepository.find({ order: { createdAt: 'DESC' } }),
+      this.ordersRepository.find({
+        order: { createdAt: 'DESC' },
+        relations: ['customer', 'items', 'items.product'],
+      }),
       this.salesRepository.find({ order: { createdAt: 'DESC' } }),
       this.inventoryRepository.find({ order: { createdAt: 'DESC' } }),
       this.inventoryBatchesRepository.find({ order: { receivedAt: 'DESC' } }),
@@ -115,7 +123,7 @@ export class DashboardService {
     ]);
 
     const filteredProducts = products.filter(
-      (product) => !query.storeId || product.storeId === query.storeId,
+      (product) => !query.storeId || !product.storeId || product.storeId === query.storeId,
     );
     const productIds = new Set(filteredProducts.map((product) => product.id));
 
@@ -138,13 +146,13 @@ export class DashboardService {
 
     const filteredSales = sales.filter(
       (sale) =>
-        (!query.storeId || sale.storeId === query.storeId) &&
+        (!query.storeId || !sale.storeId || sale.storeId === query.storeId) &&
         isWithinRange(sale.createdAt),
     );
 
     const relevantOrderItemsForStore = (order: Order) =>
       order.items.filter(
-        (item) => !query.storeId || item.product.storeId === query.storeId,
+        (item) => !query.storeId || !item.product.storeId || item.product.storeId === query.storeId,
       );
 
     const filteredOrders = orders.filter((order) => {
@@ -159,8 +167,9 @@ export class DashboardService {
       return relevantOrderItemsForStore(order).length > 0;
     });
 
-    const activeOrders = filteredOrders.filter(
-      (order) => order.status !== OrderStatus.CANCELLED,
+    // Only count orders with confirmed payment; PENDING means not yet paid
+    const activeOrders = filteredOrders.filter((order) =>
+      [OrderStatus.PAID, OrderStatus.PREPARING, OrderStatus.SHIPPED, OrderStatus.DELIVERED].includes(order.status),
     );
 
     const filteredPurchases = purchases.filter(
@@ -204,7 +213,7 @@ export class DashboardService {
     const salesTodayPos = sales
       .filter(
         (sale) =>
-          (!query.storeId || sale.storeId === query.storeId) &&
+          (!query.storeId || !sale.storeId || sale.storeId === query.storeId) &&
           new Date(sale.createdAt) >= todayStart &&
           new Date(sale.createdAt) <= todayEnd,
       )
@@ -241,6 +250,23 @@ export class DashboardService {
     const totalRevenue = posRevenue + onlineRevenue;
     const totalTransactions = filteredSales.length + activeOrders.length;
 
+    // COGS: cost of goods sold across POS sales and confirmed online orders
+    const posCogs = filteredSales.reduce((acc, sale) => {
+      return acc + sale.items.reduce((sum, item) => {
+        const costPerUnit = item.product?.cost != null ? Number(item.product.cost) : 0;
+        return sum + costPerUnit * item.quantity;
+      }, 0);
+    }, 0);
+    const orderCogs = activeOrders.reduce((acc, order) => {
+      return acc + relevantOrderItemsForStore(order).reduce((sum, item) => {
+        const costPerUnit = item.product?.cost != null ? Number(item.product.cost) : 0;
+        return sum + costPerUnit * item.quantity;
+      }, 0);
+    }, 0);
+    const cogs = posCogs + orderCogs;
+    const grossProfit = totalRevenue - cogs;
+    const grossMargin = totalRevenue > 0 ? Number(((grossProfit / totalRevenue) * 100).toFixed(1)) : 0;
+
     const buildDailySeries = (): SalesPoint[] => {
       const days = Math.max(
         1,
@@ -256,12 +282,19 @@ export class DashboardService {
         const nextDay = new Date(day);
         nextDay.setDate(day.getDate() + 1);
 
-        const pos = filteredSales
-          .filter((sale) => {
-            const createdAt = new Date(sale.createdAt);
-            return createdAt >= day && createdAt < nextDay;
-          })
-          .reduce((acc, sale) => acc + Number(sale.total), 0);
+        const daySales = filteredSales.filter((sale) => {
+          const createdAt = new Date(sale.createdAt);
+          return createdAt >= day && createdAt < nextDay;
+        });
+
+        const pos = daySales.reduce((acc, sale) => acc + Number(sale.total), 0);
+
+        const dayCogs = daySales.reduce((acc, sale) => {
+          return acc + sale.items.reduce((sum, item) => {
+            const costPerUnit = item.product?.cost != null ? Number(item.product.cost) : 0;
+            return sum + costPerUnit * item.quantity;
+          }, 0);
+        }, 0);
 
         const online = activeOrders
           .filter((order) => {
@@ -284,6 +317,7 @@ export class DashboardService {
           pos: Number(pos.toFixed(2)),
           online: Number(online.toFixed(2)),
           total: Number((pos + online).toFixed(2)),
+          profit: Number((pos - dayCogs).toFixed(2)),
         };
       });
     };
@@ -429,7 +463,7 @@ export class DashboardService {
     const soldProductIdsSinceRotation = new Set<string>();
     for (const sale of sales.filter(
       (item) =>
-        (!query.storeId || item.storeId === query.storeId) &&
+        (!query.storeId || !item.storeId || item.storeId === query.storeId) &&
         new Date(item.createdAt) >= rotationCutoff &&
         new Date(item.createdAt) <= endDate,
     )) {
@@ -545,7 +579,9 @@ export class DashboardService {
             )
         ).toFixed(2),
       ),
-      customerName: `${order.customer.firstName} ${order.customer.lastName}`,
+      customerName: order.customer
+        ? `${order.customer.firstName} ${order.customer.lastName}`.trim()
+        : 'Sin cliente',
     }));
 
     return {
@@ -589,6 +625,9 @@ export class DashboardService {
           (acc, purchase) => acc + purchase.items.length,
           0,
         ),
+        cogs: Number(cogs.toFixed(2)),
+        grossProfit: Number(grossProfit.toFixed(2)),
+        grossMargin,
       },
       salesByPeriod: buildDailySeries(),
       topProducts: Array.from(productPerformance.values())

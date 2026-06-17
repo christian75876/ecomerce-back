@@ -30,17 +30,32 @@ export class OrdersService {
     private readonly couponsService: CouponsService,
   ) {}
 
-  async findAll(storeId?: string) {
+  async findAll(storeId?: string, page = 1, limit = 20) {
+    const take = Math.min(Math.max(limit, 1), 100);
+    const skip = (Math.max(page, 1) - 1) * take;
+
     if (!storeId) {
-      return this.ordersRepository.find({ order: { createdAt: 'DESC' } });
+      const [items, total] = await this.ordersRepository.findAndCount({
+        order: { createdAt: 'DESC' },
+        relations: ['customer', 'items', 'items.product'],
+        take,
+        skip,
+      });
+      return { items, total, page: Math.max(page, 1), limit: take, totalPages: Math.ceil(total / take) };
     }
-    return this.ordersRepository
+
+    const qb = this.ordersRepository
       .createQueryBuilder('order')
-      .innerJoin('order.items', 'item')
-      .innerJoin('item.product', 'product')
+      .leftJoinAndSelect('order.customer', 'customer')
+      .leftJoinAndSelect('order.items', 'item')
+      .leftJoinAndSelect('item.product', 'product')
       .where('product.storeId = :storeId', { storeId })
       .orderBy('order.createdAt', 'DESC')
-      .getMany();
+      .take(take)
+      .skip(skip);
+
+    const [items, total] = await qb.getManyAndCount();
+    return { items, total, page: Math.max(page, 1), limit: take, totalPages: Math.ceil(total / take) };
   }
 
   async findMine(userId: number) {

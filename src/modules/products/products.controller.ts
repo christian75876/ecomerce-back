@@ -24,6 +24,7 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { UpdateProductStatusDto } from './dto/update-product-status.dto';
 import { QueryProductOptionsDto } from './dto/query-product-options.dto';
+import { QueryProductsDto } from './dto/query-products.dto';
 
 const allowedImageMimeTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
@@ -32,24 +33,8 @@ export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
   @Get()
-  async findAll(
-    @Query('search') search?: string,
-    @Query('categoryId') categoryId?: string,
-    @Query('storeId') storeId?: string,
-    @Query('active') active?: string,
-    @Query('sortBy') sortBy?: string,
-    @Query('minPrice') minPrice?: string,
-    @Query('maxPrice') maxPrice?: string,
-  ) {
-    return this.productsService.findAll({
-      search,
-      categoryId,
-      storeId,
-      active: typeof active === 'string' ? active.toLowerCase() === 'true' : undefined,
-      sortBy,
-      minPrice: minPrice ? Number(minPrice) : undefined,
-      maxPrice: maxPrice ? Number(maxPrice) : undefined,
-    });
+  async findAll(@Query() query: QueryProductsDto) {
+    return this.productsService.findAll(query);
   }
 
   @Get('favorites/me')

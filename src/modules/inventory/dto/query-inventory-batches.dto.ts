@@ -1,6 +1,7 @@
 import { IsOptional, IsString, IsUUID } from 'class-validator';
+import { PaginationQueryDto } from 'src/common/dtos/pagination-query.dto';
 
-export class QueryInventoryBatchesDto {
+export class QueryInventoryBatchesDto extends PaginationQueryDto {
   @IsOptional()
   @IsUUID()
   productId?: string;

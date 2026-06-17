@@ -30,11 +30,24 @@ export class SalesService {
     private readonly auditService: AuditService,
   ) {}
 
-  async findAll(storeId?: string) {
-    return this.salesRepository.find({
+  async findAll(storeId?: string, page = 1, limit = 20) {
+    const take = Math.min(Math.max(limit, 1), 100);
+    const skip = (Math.max(page, 1) - 1) * take;
+
+    const [items, total] = await this.salesRepository.findAndCount({
       where: storeId ? { storeId } : undefined,
       order: { createdAt: 'DESC' },
+      take,
+      skip,
     });
+
+    return {
+      items,
+      total,
+      page: Math.max(page, 1),
+      limit: take,
+      totalPages: Math.ceil(total / take),
+    };
   }
 
   async findOne(id: string) {
@@ -156,7 +169,7 @@ export class SalesService {
         detail: `Sale total ${total}`,
       });
 
-      return this.findOne(savedSale.id);
+      return manager.getRepository(Sale).findOne({ where: { id: savedSale.id } });
     });
   }
 }

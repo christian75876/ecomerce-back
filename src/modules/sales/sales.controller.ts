@@ -9,8 +9,16 @@ export class SalesController {
 
   @Get()
   @UseGuards(JwtAuthGuard)
-  async findAll(@Query('storeId') storeId?: string) {
-    return this.salesService.findAll(storeId);
+  async findAll(
+    @Query('storeId') storeId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.salesService.findAll(
+      storeId,
+      page ? parseInt(page, 10) : 1,
+      limit ? parseInt(limit, 10) : 20,
+    );
   }
 
   @Get(':id')

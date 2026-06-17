@@ -11,8 +11,16 @@ export class OrdersController {
 
   @Get()
   @UseGuards(JwtAuthGuard)
-  async findAll(@Query('storeId') storeId?: string) {
-    return this.ordersService.findAll(storeId);
+  async findAll(
+    @Query('storeId') storeId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.ordersService.findAll(
+      storeId,
+      page ? parseInt(page, 10) : 1,
+      limit ? parseInt(limit, 10) : 20,
+    );
   }
 
   @Get('me')

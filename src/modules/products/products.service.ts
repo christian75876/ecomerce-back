@@ -7,11 +7,13 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ILike, Repository } from 'typeorm';
+import { PaginatedResultDto } from 'src/common/dtos/paginated-result.dto';
 import { Product } from './entities/product.entity';
 import { ProductFavorite } from './entities/product-favorite.entity';
 import { ProductVideo, VideoType } from './entities/product-video.entity';
 import { ProductImage } from './entities/product-image.entity';
 import { Category } from '../categories/entities/category.entity';
+import { QueryProductsDto } from './dto/query-products.dto';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { UpdateProductStatusDto } from './dto/update-product-status.dto';
@@ -62,67 +64,72 @@ export class ProductsService {
     private readonly cloudinaryService: CloudinaryService,
   ) {}
 
-  async findAll(filters: {
-    search?: string;
-    categoryId?: string;
-    storeId?: string;
-    active?: boolean;
-    sortBy?: string;
-    minPrice?: number;
-    maxPrice?: number;
-  }) {
-    const where: Record<string, unknown> = {};
+  async findAll(filters: QueryProductsDto): Promise<PaginatedResultDto<Record<string, unknown>>> {
+    const page = filters.page ?? 1;
+    const limit = Math.min(filters.limit ?? 20, 500);
+    const skip = (page - 1) * limit;
+
+    const qb = this.productsRepository
+      .createQueryBuilder('product')
+      .leftJoinAndSelect('product.category', 'category')
+      .leftJoinAndSelect('product.store', 'store')
+      .leftJoinAndSelect('product.supplier', 'supplier')
+      .leftJoinAndSelect('product.menuCategory', 'menuCategory');
 
     if (filters.search) {
-      where.name = ILike(`%${filters.search.trim()}%`);
+      qb.andWhere('product.name ILIKE :search', { search: `%${filters.search.trim()}%` });
     }
-
     if (filters.categoryId) {
-      where.categoryId = filters.categoryId;
+      qb.andWhere('product.categoryId = :categoryId', { categoryId: filters.categoryId });
     }
-
     if (filters.storeId) {
-      where.storeId = filters.storeId;
+      qb.andWhere('product.storeId = :storeId', { storeId: filters.storeId });
     }
-
     if (typeof filters.active === 'boolean') {
-      where.isActive = filters.active;
+      qb.andWhere('product.isActive = :isActive', { isActive: filters.active });
+      if (filters.active) {
+        qb.andWhere('(store.id IS NULL OR store.isActive = true)');
+        qb.andWhere(
+          '(store.id IS NULL OR store.subscriptionExpiresAt IS NULL OR store.subscriptionExpiresAt > NOW())',
+        );
+      }
     }
-
-    let order: Record<string, string> = { createdAt: 'DESC' };
-    if (filters.sortBy === 'price_asc') order = { price: 'ASC' };
-    else if (filters.sortBy === 'price_desc') order = { price: 'DESC' };
-    else if (filters.sortBy === 'name_asc') order = { name: 'ASC' };
-
-    let products = await this.productsRepository.find({ where, order });
-
-    if (filters.active) {
-      const now = new Date();
-      products = products.filter((product) => {
-        if (!product.store) return true;
-        if (!product.store.isActive) return false;
-        const exp = product.store.subscriptionExpiresAt;
-        return !exp || new Date(exp) > now;
-      });
-    }
-
     if (filters.minPrice !== undefined) {
-      products = products.filter((p) => Number(p.price) >= filters.minPrice!);
+      qb.andWhere('CAST(product.price AS numeric) >= :minPrice', { minPrice: filters.minPrice });
     }
     if (filters.maxPrice !== undefined) {
-      products = products.filter((p) => Number(p.price) <= filters.maxPrice!);
+      qb.andWhere('CAST(product.price AS numeric) <= :maxPrice', { maxPrice: filters.maxPrice });
     }
+
+    if (filters.sortBy === 'price_asc') qb.orderBy('product.price', 'ASC');
+    else if (filters.sortBy === 'price_desc') qb.orderBy('product.price', 'DESC');
+    else if (filters.sortBy === 'name_asc') qb.orderBy('product.name', 'ASC');
+    else qb.orderBy('product.createdAt', 'DESC');
+
+    const [products, totalItems] = await qb.skip(skip).take(limit).getManyAndCount();
 
     const [stockMap, ratingMap] = await Promise.all([
       this.getStockMap(products.map((p) => p.id)),
       this.getRatingMap(products.map((p) => p.id)),
     ]);
-    return products.map((p) => ({
+
+    const items = products.map((p) => ({
       ...p,
       availableQuantity: stockMap.get(p.id) ?? 0,
       averageRating: ratingMap.get(p.id)?.averageRating ?? null,
       reviewCount: ratingMap.get(p.id)?.reviewCount ?? 0,
     }));
+
+    return {
+      items,
+      pagination: {
+        totalItems,
+        itemCount: items.length,
+        itemsPerPage: limit,
+        totalPages: Math.max(1, Math.ceil(totalItems / limit)),
+        currentPage: page,
+      },
+    };
   }
 
   private async getStockMap(productIds: string[]): Promise<Map<string, number>> {

@@ -11,6 +11,10 @@ export class QueryPurchasesDto extends PaginationQueryDto {
   supplierId?: string;
 
   @IsOptional()
+  @IsUUID()
+  storeId?: string;
+
+  @IsOptional()
   @IsDateString()
   dateFrom?: string;
 

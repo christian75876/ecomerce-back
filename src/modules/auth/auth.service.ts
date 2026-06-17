@@ -23,6 +23,7 @@ import { VerifyRecoverOtpDto } from './dto/verifyRecoverOtp.auth.dto';
 import { ResetPasswordDto } from './dto/resetPassword.auth.dto';
 import { EmailService } from './email.service';
 import { InvitationsService } from '../invitations/invitations.service';
+import { StoresService } from '../stores/stores.service';
 
 @Injectable()
 export class AuthService {
@@ -41,6 +42,7 @@ export class AuthService {
     private readonly recoverTokenRepository: Repository<RecoverToken>,
     private readonly emailService: EmailService,
     private readonly invitationsService: InvitationsService,
+    private readonly storesService: StoresService,
   ) {}
 
   private normalizeEmail(email: string): string {
@@ -297,6 +299,18 @@ export class AuthService {
 
     if (isInvited && inviteToken) {
       await this.invitationsService.markAccepted(inviteToken);
+      // Auto-create store for new seller
+      try {
+        const baseSlug = name.trim().toLowerCase()
+          .replace(/\s+/g, '-')
+          .replace(/[^a-z0-9-]/g, '')
+          .replace(/-+/g, '-')
+          .slice(0, 40);
+        const slug = `${baseSlug}-${user.id}`;
+        await this.storesService.create({ name: name.trim(), slug, userId: user.id });
+      } catch {
+        // Non-critical: store can be created later by admin
+      }
     }
 
     const now = Math.floor(Date.now() / 1000);

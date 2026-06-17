@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt.auth.guard';
 import { CashService } from './cash.service';
 import { OpenCashSessionDto } from './dto/open-cash-session.dto';
@@ -11,8 +11,8 @@ export class CashController {
   constructor(private readonly cashService: CashService) {}
 
   @Get('sessions')
-  async findSessions() {
-    return this.cashService.findSessions();
+  async findSessions(@Query('storeId') storeId?: string) {
+    return this.cashService.findSessions(storeId);
   }
 
   @Get('sessions/:id/movements')

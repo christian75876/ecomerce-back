@@ -19,8 +19,11 @@ export class CashService {
     private readonly storesRepository: Repository<Store>,
   ) {}
 
-  async findSessions() {
-    return this.sessionsRepository.find({ order: { createdAt: 'DESC' } });
+  async findSessions(storeId?: string) {
+    return this.sessionsRepository.find({
+      where: storeId ? { storeId } : undefined,
+      order: { createdAt: 'DESC' },
+    });
   }
 
   async findSession(id: string) {

@@ -24,13 +24,15 @@ import { InventoryReferenceType } from '../inventory/entities/inventory-batch-al
 import { QueryProductOptionsDto } from './dto/query-product-options.dto';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
 
-const YOUTUBE_REGEX = /^https?:\/\/(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)[\w-]+/;
+const YOUTUBE_REGEX = /^https?:\/\/(www\.)?(youtube\.com\/(watch\?v=|shorts\/)|youtu\.be\/)[\w-]+/;
 const INSTAGRAM_REGEX = /^https?:\/\/(www\.)?instagram\.com\/(p|reel|tv)\/[\w-]+/;
+const FACEBOOK_REGEX = /^https?:\/\/(www\.)?(facebook\.com|fb\.watch)\/.+/;
 
 function detectVideoType(url: string): VideoType {
   if (YOUTUBE_REGEX.test(url)) return 'YOUTUBE';
   if (INSTAGRAM_REGEX.test(url)) return 'INSTAGRAM';
-  throw new BadRequestException('URL no válida. Usa un enlace de YouTube o Instagram');
+  if (FACEBOOK_REGEX.test(url)) return 'FACEBOOK';
+  throw new BadRequestException('URL no válida. Usa un enlace de YouTube, Instagram o Facebook');
 }
 
 @Injectable()
@@ -329,7 +331,9 @@ export class ProductsService {
     if (createProductDto.supplierId) {
       await this.ensureSupplierExists(createProductDto.supplierId);
     }
-    await this.ensureUniqueSku(createProductDto.sku);
+    if (createProductDto.sku) {
+      await this.ensureUniqueSku(createProductDto.sku);
+    }
     const initialStock = Number(createProductDto.initialStock ?? 0);
     const initialCost =
       typeof createProductDto.cost === 'number' ? createProductDto.cost : 0;
@@ -345,7 +349,7 @@ export class ProductsService {
         ...createProductDto,
         name: createProductDto.name.trim(),
         description: createProductDto.description.trim(),
-        sku: createProductDto.sku.trim().toUpperCase(),
+        sku: createProductDto.sku ? createProductDto.sku.trim().toUpperCase() : null,
         imageUrl: createProductDto.imageUrl?.trim() || null,
         cost: typeof createProductDto.cost === 'number' ? createProductDto.cost : null,
         compareAtPrice: typeof createProductDto.compareAtPrice === 'number' ? createProductDto.compareAtPrice : null,
@@ -371,7 +375,7 @@ export class ProductsService {
           expiresAt: createProductDto.initialExpiresAt
             ? new Date(createProductDto.initialExpiresAt)
             : null,
-          batchCode: `INITIAL-${savedProduct.sku}`,
+          batchCode: `INITIAL-${savedProduct.sku ?? savedProduct.id}`,
           note: 'Initial stock on product creation',
           manager,
           referenceType: InventoryReferenceType.PRODUCT_INITIAL,
@@ -549,7 +553,8 @@ export class ProductsService {
     }
   }
 
-  private async ensureUniqueSku(sku: string, currentProductId?: string) {
+  private async ensureUniqueSku(sku: string | null | undefined, currentProductId?: string) {
+    if (!sku) return;
     const existingProduct = await this.productsRepository.findOne({
       where: {
         sku: sku.trim().toUpperCase(),

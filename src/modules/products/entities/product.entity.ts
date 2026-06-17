@@ -26,8 +26,8 @@ export class Product {
   @Column({ type: 'text' })
   description: string;
 
-  @Column({ type: 'varchar', length: 80, unique: true })
-  sku: string;
+  @Column({ type: 'varchar', length: 80, unique: true, nullable: true })
+  sku: string | null;
 
   @Column({ type: 'decimal', precision: 12, scale: 2 })
   price: number;

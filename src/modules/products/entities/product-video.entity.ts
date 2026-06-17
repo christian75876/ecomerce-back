@@ -8,7 +8,7 @@ import {
 } from 'typeorm';
 import { Product } from './product.entity';
 
-export type VideoType = 'YOUTUBE' | 'INSTAGRAM';
+export type VideoType = 'YOUTUBE' | 'INSTAGRAM' | 'FACEBOOK';
 
 @Entity('product_videos')
 export class ProductVideo {

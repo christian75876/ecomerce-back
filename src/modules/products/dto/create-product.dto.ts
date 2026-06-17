@@ -22,10 +22,10 @@ export class CreateProductDto {
   @IsNotEmpty()
   description: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @MaxLength(80)
-  sku: string;
+  sku?: string;
 
   @Type(() => Number)
   @IsNumber()

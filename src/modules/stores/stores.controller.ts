@@ -35,6 +35,23 @@ export class StoresController {
     );
   }
 
+  @Get('admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  async findAllAdmin(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+  ) {
+    return this.storesService.findAllAdmin({
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
+      search,
+      status,
+    });
+  }
+
   @Get('mine')
   @UseGuards(JwtAuthGuard)
   async findMine(@Req() req: any) {
@@ -55,9 +72,10 @@ export class StoresController {
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin')
-  async update(@Param('id') id: string, @Body() payload: UpdateStoreDto) {
-    return this.storesService.update(id, payload);
+  @Roles('admin', 'seller')
+  async update(@Param('id') id: string, @Body() payload: UpdateStoreDto, @Req() req: any) {
+    const isAdmin = req.user.role === 'admin';
+    return this.storesService.update(id, payload, req.user.userId as number, isAdmin);
   }
 
   @Patch(':id/notifications')

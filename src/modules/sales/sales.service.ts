@@ -30,8 +30,9 @@ export class SalesService {
     private readonly auditService: AuditService,
   ) {}
 
-  async findAll() {
+  async findAll(storeId?: string) {
     return this.salesRepository.find({
+      where: storeId ? { storeId } : undefined,
       order: { createdAt: 'DESC' },
     });
   }
@@ -55,10 +56,17 @@ export class SalesService {
       const items = [];
       let total = 0;
       const paymentMethod = createSaleDto.paymentMethod ?? SalePaymentMethod.CASH;
+
+      if (paymentMethod === SalePaymentMethod.CREDIT && !createSaleDto.storeId) {
+        throw new BadRequestException('Credit sale requires a store');
+      }
+
       const customer =
         createSaleDto.customerId
           ? await customersRepository.findOne({
-              where: { id: createSaleDto.customerId },
+              where: createSaleDto.storeId
+                ? { id: createSaleDto.customerId, storeId: createSaleDto.storeId }
+                : { id: createSaleDto.customerId },
             })
           : null;
 
@@ -73,6 +81,12 @@ export class SalesService {
 
         if (!product) {
           throw new BadRequestException('One of the selected products is invalid');
+        }
+
+        if (createSaleDto.storeId && product.storeId !== createSaleDto.storeId) {
+          throw new BadRequestException(
+            'One of the selected products does not belong to the selected store',
+          );
         }
 
         const stock = await this.inventoryService.getCurrentStock(product.id);
@@ -120,7 +134,12 @@ export class SalesService {
       }
 
       if (paymentMethod === SalePaymentMethod.CREDIT && customer) {
-        await this.customersService.registerCreditSale(customer.id, total, savedSale.id);
+        await this.customersService.registerCreditSale(
+          customer.id,
+          total,
+          savedSale.id,
+          createSaleDto.storeId,
+        );
       }
 
       if (paymentMethod === SalePaymentMethod.CASH && createSaleDto.cashSessionId) {

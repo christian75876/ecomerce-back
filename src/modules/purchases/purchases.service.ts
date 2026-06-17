@@ -71,6 +71,12 @@ export class PurchasesService {
       });
     }
 
+    if (query.storeId) {
+      builder.andWhere('purchase.storeId = :storeId', {
+        storeId: query.storeId,
+      });
+    }
+
     if (query.dateFrom) {
       builder.andWhere('purchase.purchaseDate >= :dateFrom', {
         dateFrom: new Date(query.dateFrom).toISOString(),

@@ -2,11 +2,14 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  JoinColumn,
+  ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { Purchase } from '../../purchases/entities/purchase.entity';
+import { Store } from '../../stores/entities/store.entity';
 
 @Entity('suppliers')
 export class Supplier {
@@ -33,6 +36,13 @@ export class Supplier {
 
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
+
+  @Column({ name: 'store_id', type: 'uuid', nullable: true })
+  storeId: string | null;
+
+  @ManyToOne(() => Store, { eager: false, nullable: true })
+  @JoinColumn({ name: 'store_id' })
+  store: Store | null;
 
   @OneToMany(() => Purchase, (purchase) => purchase.supplier)
   purchases: Purchase[];

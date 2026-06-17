@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt.auth.guard';
 import { SalesService } from './sales.service';
 import { CreateSaleDto } from './dto/create-sale.dto';
@@ -9,8 +9,8 @@ export class SalesController {
 
   @Get()
   @UseGuards(JwtAuthGuard)
-  async findAll() {
-    return this.salesService.findAll();
+  async findAll(@Query('storeId') storeId?: string) {
+    return this.salesService.findAll(storeId);
   }
 
   @Get(':id')

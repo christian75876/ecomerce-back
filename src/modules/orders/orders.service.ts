@@ -30,10 +30,17 @@ export class OrdersService {
     private readonly couponsService: CouponsService,
   ) {}
 
-  async findAll() {
-    return this.ordersRepository.find({
-      order: { createdAt: 'DESC' },
-    });
+  async findAll(storeId?: string) {
+    if (!storeId) {
+      return this.ordersRepository.find({ order: { createdAt: 'DESC' } });
+    }
+    return this.ordersRepository
+      .createQueryBuilder('order')
+      .innerJoin('order.items', 'item')
+      .innerJoin('item.product', 'product')
+      .where('product.storeId = :storeId', { storeId })
+      .orderBy('order.createdAt', 'DESC')
+      .getMany();
   }
 
   async findMine(userId: number) {
@@ -89,8 +96,6 @@ export class OrdersService {
     let appliedCouponCode: string | null = null;
 
     const savedOrderId = await this.dataSource.transaction(async (manager) => {
-      const customer = await this.resolveCustomer(createOrderDto, manager);
-      notifyCustomer = customer;
       const productsRepository = manager.getRepository(Product);
       const items = [];
       let total = 0;
@@ -128,6 +133,14 @@ export class OrdersService {
       }
 
       notifyStores = [...storeMap.values()];
+      const customerStoreId =
+        storeMap.size === 1 ? Array.from(storeMap.keys())[0] : null;
+      const customer = await this.resolveCustomer(
+        createOrderDto,
+        manager,
+        customerStoreId,
+      );
+      notifyCustomer = customer;
 
       let discountAmount = 0;
 
@@ -201,12 +214,15 @@ export class OrdersService {
   private async resolveCustomer(
     createOrderDto: CreateOrderDto,
     manager: EntityManager,
+    storeId?: string | null,
   ) {
     const customersRepository = manager.getRepository(Customer);
 
     if (createOrderDto.customerId) {
       const customer = await customersRepository.findOne({
-        where: { id: createOrderDto.customerId },
+        where: storeId
+          ? { id: createOrderDto.customerId, storeId }
+          : { id: createOrderDto.customerId },
       });
 
       if (!customer) {
@@ -222,7 +238,9 @@ export class OrdersService {
 
     const normalizedEmail = createOrderDto.customer.email.trim().toLowerCase();
     const existingCustomer = await customersRepository.findOne({
-      where: { email: normalizedEmail },
+      where: storeId
+        ? { email: normalizedEmail, storeId }
+        : { email: normalizedEmail },
     });
 
     if (existingCustomer) {
@@ -234,6 +252,7 @@ export class OrdersService {
       lastName: createOrderDto.customer.lastName.trim(),
       email: normalizedEmail,
       phone: createOrderDto.customer.phone?.trim() || null,
+      storeId: storeId ?? null,
     });
 
     return customersRepository.save(customer);

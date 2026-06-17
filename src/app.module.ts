@@ -24,6 +24,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { MenuCategoriesModule } from './modules/menu-categories/menu-categories.module';
 import { CouponsModule } from './modules/coupons/coupons.module';
 import { AppConfigModule } from './modules/app-config/app-config.module';
+import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { AppConfigModule } from './modules/app-config/app-config.module';
     MenuCategoriesModule,
     CouponsModule,
     AppConfigModule,
+    SubscriptionsModule,
   ],
   providers: [
     AppInitializer,

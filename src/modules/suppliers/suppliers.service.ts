@@ -17,24 +17,38 @@ export class SuppliersService {
     private readonly suppliersRepository: Repository<Supplier>,
   ) {}
 
-  async findAll(search?: string) {
-    if (!search?.trim()) {
-      return this.suppliersRepository.find({ order: { createdAt: 'DESC' } });
+  async findAll(search?: string, allowedStoreIds?: string[]) {
+    const builder = this.suppliersRepository
+      .createQueryBuilder('supplier')
+      .orderBy('supplier.createdAt', 'DESC');
+
+    if (allowedStoreIds?.length) {
+      builder.where('supplier.storeId IN (:...storeIds)', { storeIds: allowedStoreIds });
     }
 
-    return this.suppliersRepository.find({
-      where: [{ name: ILike(`%${search}%`) }, { email: ILike(`%${search}%`) }],
-      order: { createdAt: 'DESC' },
-    });
+    if (search?.trim()) {
+      const like = `%${search.trim()}%`;
+      const method = allowedStoreIds?.length ? 'andWhere' : 'where';
+      builder[method](
+        '(supplier.name ILIKE :like OR supplier.email ILIKE :like)',
+        { like },
+      );
+    }
+
+    return builder.getMany();
   }
 
-  async getOptions(query: QuerySupplierOptionsDto) {
+  async getOptions(query: QuerySupplierOptionsDto, allowedStoreIds?: string[]) {
     const page = query.page ?? 1;
     const limit = query.limit ?? 10;
     const builder = this.suppliersRepository
       .createQueryBuilder('supplier')
       .where('supplier.isActive = :isActive', { isActive: true })
       .orderBy('supplier.name', 'ASC');
+
+    if (allowedStoreIds?.length) {
+      builder.andWhere('supplier.storeId IN (:...storeIds)', { storeIds: allowedStoreIds });
+    }
 
     if (query.search?.trim()) {
       builder.andWhere(
@@ -77,11 +91,11 @@ export class SuppliersService {
 
   async create(payload: CreateSupplierDto) {
     const existing = await this.suppliersRepository.findOne({
-      where: { name: payload.name.trim() },
+      where: { name: payload.name.trim(), storeId: payload.storeId ?? null },
     });
 
     if (existing) {
-      throw new ConflictException('Supplier name is already in use');
+      throw new ConflictException('Supplier name is already in use for this store');
     }
 
     const supplier = this.suppliersRepository.create({
@@ -92,6 +106,7 @@ export class SuppliersService {
       address: payload.address?.trim() || null,
       notes: payload.notes?.trim() || null,
       isActive: true,
+      storeId: payload.storeId ?? null,
     });
 
     return this.suppliersRepository.save(supplier);

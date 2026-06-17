@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, MoreThan, Or, Repository } from 'typeorm';
+import { IsNull, MoreThan, Not, Or, Repository } from 'typeorm';
 import { Store, StoreType } from './entities/store.entity';
 import { CreateStoreDto } from './dto/create-store.dto';
 import { UpdateStoreDto } from './dto/update-store.dto';
@@ -23,6 +23,10 @@ export class StoresService {
   async findAll(active?: boolean) {
     const where: Record<string, unknown> =
       typeof active === 'boolean' ? { isActive: active } : {};
+
+    // Only show stores that belong to a seller (userId not null)
+    // System/default stores (userId = null) are excluded from the public marketplace
+    where.userId = Not(IsNull());
 
     if (active === true) {
       // Exclude stores with an expired subscription
@@ -125,8 +129,15 @@ export class StoresService {
     return this.storesRepository.save(store);
   }
 
-  async update(id: string, payload: UpdateStoreDto) {
-    const store = await this.findOneById(id);
+  async update(id: string, payload: UpdateStoreDto, userId?: number, isAdmin = true) {
+    const store = isAdmin ? await this.findOneById(id) : await this.findOneOwned(id, userId!, false);
+
+    if (!isAdmin) {
+      // Sellers cannot change admin-controlled fields
+      delete payload.isActive;
+      delete payload.isPremiumAdvertiser;
+      delete payload.subscriptionExpiresAt;
+    }
 
     if (payload.slug) {
       await this.ensureUniqueSlug(payload.slug, id);
@@ -204,6 +215,53 @@ export class StoresService {
     });
 
     return this.storesRepository.save(store);
+  }
+
+  async findAllAdmin(query: { page?: number; limit?: number; search?: string; status?: string }) {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 15;
+    const now = new Date();
+
+    const builder = this.storesRepository
+      .createQueryBuilder('store')
+      .orderBy('store.createdAt', 'DESC');
+
+    if (query.search?.trim()) {
+      builder.where('(store.name ILIKE :search OR store.email ILIKE :search)', {
+        search: `%${query.search.trim()}%`,
+      });
+    }
+
+    if (query.status === 'active') {
+      builder.andWhere('store.isActive = true');
+    } else if (query.status === 'inactive') {
+      builder.andWhere('store.isActive = false');
+    }
+
+    const [stores, totalItems] = await builder
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+
+    const items = stores.map((store) => ({
+      ...store,
+      subscriptionStatus: !store.subscriptionExpiresAt
+        ? ('NEVER' as const)
+        : store.subscriptionExpiresAt > now
+        ? ('ACTIVE' as const)
+        : ('EXPIRED' as const),
+    }));
+
+    return {
+      items,
+      pagination: {
+        totalItems,
+        itemCount: stores.length,
+        itemsPerPage: limit,
+        totalPages: Math.max(1, Math.ceil(totalItems / limit)),
+        currentPage: page,
+      },
+    };
   }
 
   async uploadLogo(id: string, file: Express.Multer.File, userId: number, isAdmin: boolean) {

@@ -1,51 +1,69 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, Request, UseGuards } from '@nestjs/common';
 import { CustomersService } from './customers.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt.auth.guard';
 import { RegisterCustomerPaymentDto } from './dto/register-customer-payment.dto';
+import { QueryCustomersDto } from './dto/query-customers.dto';
+import { StoresService } from '../stores/stores.service';
 
 @Controller('customers')
+@UseGuards(JwtAuthGuard)
 export class CustomersController {
-  constructor(private readonly customersService: CustomersService) {}
+  constructor(
+    private readonly customersService: CustomersService,
+    private readonly storesService: StoresService,
+  ) {}
 
   @Get()
-  async findAll(@Query('search') search?: string) {
-    return this.customersService.findAll(search);
+  async findAll(
+    @Query() query: QueryCustomersDto,
+    @Request() req: { user: { userId: number; role: string } },
+  ) {
+    let allowedStoreIds: string[] | undefined;
+    if (req.user.role === 'seller') {
+      const stores = await this.storesService.findMine(req.user.userId);
+      allowedStoreIds = stores.map((s) => s.id);
+    }
+    return this.customersService.findAll(query, allowedStoreIds);
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string) {
-    return this.customersService.findOne(id);
+  async findOne(
+    @Param('id') id: string,
+    @Query('storeId') storeId?: string,
+  ) {
+    return this.customersService.findOne(id, storeId);
   }
 
   @Post()
-  @UseGuards(JwtAuthGuard)
   async create(@Body() createCustomerDto: CreateCustomerDto) {
     return this.customersService.create(createCustomerDto);
   }
 
   @Patch(':id')
-  @UseGuards(JwtAuthGuard)
   async update(
     @Param('id') id: string,
     @Body() updateCustomerDto: UpdateCustomerDto,
+    @Query('storeId') storeId?: string,
   ) {
-    return this.customersService.update(id, updateCustomerDto);
+    return this.customersService.update(id, updateCustomerDto, storeId);
   }
 
   @Get(':id/credit')
-  @UseGuards(JwtAuthGuard)
-  async getCreditStatus(@Param('id') id: string) {
-    return this.customersService.getCreditStatus(id);
+  async getCreditStatus(
+    @Param('id') id: string,
+    @Query('storeId') storeId?: string,
+  ) {
+    return this.customersService.getCreditStatus(id, storeId);
   }
 
   @Post(':id/payments')
-  @UseGuards(JwtAuthGuard)
   async registerPayment(
     @Param('id') id: string,
     @Body() payload: RegisterCustomerPaymentDto,
+    @Query('storeId') storeId?: string,
   ) {
-    return this.customersService.registerPayment(id, payload);
+    return this.customersService.registerPayment(id, payload, storeId);
   }
 }

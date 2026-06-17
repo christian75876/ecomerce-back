@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsBoolean, IsEmail, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { IsBoolean, IsEmail, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
 
 export class UpdateCustomerDto {
   @IsOptional()
@@ -30,4 +30,8 @@ export class UpdateCustomerDto {
   @IsNumber()
   @Min(0)
   creditLimit?: number;
+
+  @IsOptional()
+  @IsUUID()
+  storeId?: string;
 }

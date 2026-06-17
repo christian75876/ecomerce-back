@@ -2,16 +2,23 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   OneToMany,
   OneToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
   JoinColumn,
+  ManyToOne,
 } from 'typeorm';
 import { Order } from '../../orders/entities/order.entity';
 import { User } from '../../users/entities/user.entity';
 import { CustomerLedgerEntry } from './customer-ledger-entry.entity';
+import { Store } from '../../stores/entities/store.entity';
 
+@Index('IDX_customers_store_email_unique', ['storeId', 'email'], {
+  unique: true,
+  where: '"store_id" IS NOT NULL',
+})
 @Entity('customers')
 export class Customer {
   @PrimaryGeneratedColumn('uuid')
@@ -23,7 +30,7 @@ export class Customer {
   @Column({ type: 'varchar', length: 120 })
   lastName: string;
 
-  @Column({ type: 'varchar', length: 160, unique: true })
+  @Column({ type: 'varchar', length: 160 })
   email: string;
 
   @Column({ type: 'varchar', length: 30, nullable: true })
@@ -40,6 +47,16 @@ export class Customer {
 
   @Column({ name: 'user_id', type: 'int', nullable: true, unique: true })
   userId: number | null;
+
+  @Column({ name: 'store_id', type: 'uuid', nullable: true })
+  storeId: string | null;
+
+  @ManyToOne(() => Store, (store) => store.customers, {
+    eager: false,
+    nullable: true,
+  })
+  @JoinColumn({ name: 'store_id' })
+  store: Store | null;
 
   @OneToOne(() => User, { eager: false, nullable: true })
   @JoinColumn({ name: 'user_id' })

@@ -43,6 +43,9 @@ export class InvitationsService {
     });
     await this.invitationsRepository.save(invitation);
 
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const inviteUrl = `${frontendUrl}/register?token=${encodeURIComponent(token)}`;
+
     let emailSent = true;
     try {
       await this.emailService.sendInvitationEmail(normalized, token);
@@ -56,6 +59,7 @@ export class InvitationsService {
         : `Invitación creada pero no se pudo enviar el correo`,
       email: normalized,
       emailSent,
+      inviteUrl,
     };
   }
 

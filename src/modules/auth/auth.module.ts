@@ -10,12 +10,14 @@ import { RecoverToken } from './entities/token.entity';
 import { Role } from '../users/entities/role.entity';
 import { Customer } from '../customers/entities/customer.entity';
 import { InvitationsModule } from '../invitations/invitations.module';
+import { StoresModule } from '../stores/stores.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([User, Role, Customer, RecoverToken]),
     ConfigModule.forRoot(),
     InvitationsModule,
+    StoresModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

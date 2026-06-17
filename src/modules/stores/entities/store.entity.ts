@@ -7,6 +7,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { Product } from '../../products/entities/product.entity';
+import { Customer } from '../../customers/entities/customer.entity';
 
 export enum DeliveryOptions {
   DELIVERY = 'DELIVERY',
@@ -140,6 +141,9 @@ export class Store {
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 
+  @Column({ name: 'is_system', type: 'boolean', default: false })
+  isSystem: boolean;
+
   @Column({ name: 'is_adult_content', type: 'boolean', default: false })
   isAdultContent: boolean;
 
@@ -169,6 +173,9 @@ export class Store {
 
   @OneToMany(() => Product, (product) => product.store)
   products: Product[];
+
+  @OneToMany(() => Customer, (customer) => customer.store)
+  customers: Customer[];
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;

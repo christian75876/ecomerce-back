@@ -186,6 +186,10 @@ export class DashboardService {
       openCashSessionIds.has(movement.cashSessionId),
     );
 
+    const filteredCustomers = customers.filter(
+      (customer) => !query.storeId || customer.storeId === query.storeId,
+    );
+
     const pendingOrders = filteredOrders.filter((order) =>
       [OrderStatus.PENDING, OrderStatus.PAID, OrderStatus.PREPARING].includes(
         order.status,
@@ -459,6 +463,10 @@ export class DashboardService {
 
     const customerPaymentById = new Map<string, Date>();
     for (const entry of customerLedgerEntries) {
+      if (query.storeId && entry.customer?.storeId !== query.storeId) {
+        continue;
+      }
+
       if (
         entry.type === CustomerLedgerEntryType.PAYMENT &&
         !customerPaymentById.has(entry.customerId)
@@ -467,7 +475,7 @@ export class DashboardService {
       }
     }
 
-    const customersWithDebt = customers
+    const customersWithDebt = filteredCustomers
       .filter((customer) => Number(customer.creditBalance) > 0)
       .map((customer) => ({
         customerId: customer.id,

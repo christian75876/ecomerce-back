@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt.auth.guard';
 import { OrdersService } from './orders.service';
@@ -11,8 +11,8 @@ export class OrdersController {
 
   @Get()
   @UseGuards(JwtAuthGuard)
-  async findAll() {
-    return this.ordersService.findAll();
+  async findAll(@Query('storeId') storeId?: string) {
+    return this.ordersService.findAll(storeId);
   }
 
   @Get('me')

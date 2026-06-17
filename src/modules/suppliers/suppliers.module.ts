@@ -4,9 +4,10 @@ import { Supplier } from './entities/supplier.entity';
 import { SuppliersController } from './suppliers.controller';
 import { SuppliersService } from './suppliers.service';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { StoresModule } from '../stores/stores.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Supplier])],
+  imports: [TypeOrmModule.forFeature([Supplier]), StoresModule],
   controllers: [SuppliersController],
   providers: [SuppliersService, RolesGuard],
   exports: [SuppliersService],

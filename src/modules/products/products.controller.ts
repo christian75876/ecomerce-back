@@ -120,6 +120,13 @@ export class ProductsController {
     return this.productsService.update(id, updateProductDto);
   }
 
+  @Delete(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'seller')
+  async remove(@Param('id') id: string, @Req() req: any) {
+    return this.productsService.remove(id, req.user.userId, req.user.role);
+  }
+
   @Patch(':id/status')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'seller')

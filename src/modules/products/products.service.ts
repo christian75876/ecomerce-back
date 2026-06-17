@@ -27,12 +27,14 @@ import { CloudinaryService } from '../cloudinary/cloudinary.service';
 const YOUTUBE_REGEX = /^https?:\/\/(www\.)?(youtube\.com\/(watch\?v=|shorts\/)|youtu\.be\/)[\w-]+/;
 const INSTAGRAM_REGEX = /^https?:\/\/(www\.)?instagram\.com\/(p|reel|tv)\/[\w-]+/;
 const FACEBOOK_REGEX = /^https?:\/\/(www\.)?(facebook\.com|fb\.watch)\/.+/;
+const TIKTOK_REGEX = /^https?:\/\/(www\.)?(tiktok\.com|vm\.tiktok\.com)\/.+/;
 
 function detectVideoType(url: string): VideoType {
   if (YOUTUBE_REGEX.test(url)) return 'YOUTUBE';
   if (INSTAGRAM_REGEX.test(url)) return 'INSTAGRAM';
   if (FACEBOOK_REGEX.test(url)) return 'FACEBOOK';
-  throw new BadRequestException('URL no válida. Usa un enlace de YouTube, Instagram o Facebook');
+  if (TIKTOK_REGEX.test(url)) return 'TIKTOK';
+  throw new BadRequestException('URL no válida. Usa un enlace de YouTube, Instagram, Facebook o TikTok');
 }
 
 @Injectable()
@@ -452,6 +454,62 @@ export class ProductsService {
     const product = await this.findEntity(id);
     product.isActive = updateStatusDto.isActive;
     return this.productsRepository.save(product);
+  }
+
+  async remove(id: string, requestingUserId: number, role: string) {
+    const product = await this.findEntity(id);
+
+    if (role !== 'admin') {
+      const store = await this.storesRepository.findOne({ where: { id: product.storeId } });
+      if (!store || store.userId !== requestingUserId) {
+        throw new UnauthorizedException('No tienes permiso para eliminar este producto');
+      }
+    }
+
+    const manager = this.productsRepository.manager;
+
+    // Block deletion if there are historical sales or orders for this product
+    const [saleRows, orderRows] = await Promise.all([
+      manager.query<{ count: string }[]>(`SELECT COUNT(*) AS count FROM sale_items WHERE product_id = $1`, [id]),
+      manager.query<{ count: string }[]>(`SELECT COUNT(*) AS count FROM order_items WHERE product_id = $1`, [id]),
+    ]);
+    if (Number(saleRows[0].count) > 0 || Number(orderRows[0].count) > 0) {
+      throw new ConflictException('No se puede eliminar un producto con ventas u órdenes registradas');
+    }
+
+    // Collect Cloudinary public IDs before deleting DB records
+    const galleryImages = await this.imagesRepository.find({ where: { productId: id } });
+    const cloudinaryPublicIds: string[] = [];
+    if (product.imageUrl) {
+      const pid = this.extractCloudinaryPublicId(product.imageUrl);
+      if (pid) cloudinaryPublicIds.push(pid);
+    }
+    for (const img of galleryImages) {
+      const pid = this.extractCloudinaryPublicId(img.imageUrl);
+      if (pid) cloudinaryPublicIds.push(pid);
+    }
+
+    // Delete dependent records in FK-safe order
+    await manager.query(`DELETE FROM inventory_batch_allocations WHERE product_id = $1`, [id]);
+    await manager.query(`DELETE FROM inventory_movements WHERE product_id = $1`, [id]);
+    await manager.query(`DELETE FROM inventory_batches WHERE product_id = $1`, [id]);
+    await manager.query(`DELETE FROM reviews WHERE product_id = $1`, [id]);
+    await this.favoritesRepository.delete({ productId: id });
+    await this.videosRepository.delete({ productId: id });
+    await this.imagesRepository.delete({ productId: id });
+
+    await this.productsRepository.remove(product);
+
+    // Clean up Cloudinary images (fire-and-forget, don't fail the response)
+    void Promise.allSettled(cloudinaryPublicIds.map((pid) => this.cloudinaryService.deleteImage(pid)));
+
+    return { deleted: true };
+  }
+
+  private extractCloudinaryPublicId(url: string): string | null {
+    // Cloudinary URL: https://res.cloudinary.com/cloud/image/upload/v1234567890/public/id.jpg
+    const match = url.match(/\/v\d+\/(.+?)(?:\.[^.]+)?$/);
+    return match ? match[1] : null;
   }
 
   async getMyFavorites(userId: number) {

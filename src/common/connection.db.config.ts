@@ -7,13 +7,10 @@ import { join } from 'path';
 export class DatabaseConfigService implements TypeOrmOptionsFactory {
   createTypeOrmOptions(): TypeOrmModuleOptions {
     const envConfig = EnvConfig();
-    return {
+    const databaseUrl = process.env.DATABASE_URL;
+
+    const base: Partial<TypeOrmModuleOptions> = {
       type: 'postgres',
-      host: envConfig.host,
-      port: envConfig.port,
-      username: envConfig.usernameDb,
-      password: envConfig.password,
-      database: envConfig.database,
       entities: [join(__dirname, '..', '**', '*.entity.{ts,js}')],
       autoLoadEntities: true,
       synchronize: envConfig.databaseSynchronize,
@@ -21,5 +18,24 @@ export class DatabaseConfigService implements TypeOrmOptionsFactory {
       logging: envConfig.databaseLogging,
       logger: 'advanced-console',
     };
+
+    if (databaseUrl) {
+      return {
+        ...base,
+        type: 'postgres',
+        url: databaseUrl,
+        ssl: { rejectUnauthorized: false },
+      } as TypeOrmModuleOptions;
+    }
+
+    return {
+      ...base,
+      type: 'postgres',
+      host: envConfig.host,
+      port: envConfig.port,
+      username: envConfig.usernameDb,
+      password: envConfig.password,
+      database: envConfig.database,
+    } as TypeOrmModuleOptions;
   }
 }

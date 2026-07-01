@@ -15,11 +15,15 @@ export class OrdersController {
     @Query('storeId') storeId?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('status') status?: string,
+    @Query('search') search?: string,
   ) {
     return this.ordersService.findAll(
       storeId,
       page ? (parseInt(page, 10) || 1) : 1,
       limit ? (parseInt(limit, 10) || 20) : 20,
+      status || undefined,
+      search?.trim() || undefined,
     );
   }
 

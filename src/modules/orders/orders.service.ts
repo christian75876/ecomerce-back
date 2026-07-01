@@ -30,32 +30,49 @@ export class OrdersService {
     private readonly couponsService: CouponsService,
   ) {}
 
-  async findAll(storeId?: string, page = 1, limit = 20) {
+  async findAll(storeId?: string, page = 1, limit = 20, status?: string, search?: string) {
     const take = Math.min(Math.max(limit, 1), 100);
-    const skip = (Math.max(page, 1) - 1) * take;
-
-    if (!storeId) {
-      const [items, total] = await this.ordersRepository.findAndCount({
-        order: { createdAt: 'DESC' },
-        relations: ['customer', 'items', 'items.product'],
-        take,
-        skip,
-      });
-      return { items, total, page: Math.max(page, 1), limit: take, totalPages: Math.ceil(total / take) };
-    }
+    const safePage = Math.max(page, 1);
+    const skip = (safePage - 1) * take;
 
     const qb = this.ordersRepository
       .createQueryBuilder('order')
       .leftJoinAndSelect('order.customer', 'customer')
       .leftJoinAndSelect('order.items', 'item')
       .leftJoinAndSelect('item.product', 'product')
-      .where('product.storeId = :storeId', { storeId })
       .orderBy('order.createdAt', 'DESC')
       .take(take)
       .skip(skip);
 
+    // Filter by store using EXISTS to avoid duplicate rows from item joins
+    if (storeId) {
+      qb.andWhere(
+        `EXISTS (
+          SELECT 1 FROM order_items oi
+          JOIN products p ON oi.product_id = p.id
+          WHERE oi.order_id = order.id AND p.store_id = :storeId
+        )`,
+        { storeId },
+      );
+    }
+
+    if (status) {
+      qb.andWhere('order.status = :status', { status });
+    }
+
+    if (search) {
+      const s = `%${search.toLowerCase()}%`;
+      qb.andWhere(
+        `(LOWER(CAST(order.id AS TEXT)) LIKE :s
+          OR LOWER(customer.first_name) LIKE :s
+          OR LOWER(customer.last_name) LIKE :s
+          OR LOWER(customer.email) LIKE :s)`,
+        { s },
+      );
+    }
+
     const [items, total] = await qb.getManyAndCount();
-    return { items, total, page: Math.max(page, 1), limit: take, totalPages: Math.ceil(total / take) };
+    return { items, total, page: safePage, limit: take, totalPages: Math.ceil(total / take) };
   }
 
   async findMine(userId: number) {

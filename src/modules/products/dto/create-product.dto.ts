@@ -1,5 +1,7 @@
 import {
+  IsDateString,
   IsBoolean,
+  IsInt,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -20,10 +22,10 @@ export class CreateProductDto {
   @IsNotEmpty()
   description: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @MaxLength(80)
-  sku: string;
+  sku?: string;
 
   @Type(() => Number)
   @IsNumber()
@@ -32,6 +34,36 @@ export class CreateProductDto {
 
   @IsUUID()
   categoryId: string;
+
+  @IsOptional()
+  @IsUUID()
+  storeId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  menuCategoryId?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  cost?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  compareAtPrice?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  initialStock?: number;
+
+  @IsOptional()
+  @IsUUID()
+  supplierId?: string;
 
   @IsOptional()
   @IsString()
@@ -45,4 +77,22 @@ export class CreateProductDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isPerishable?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  trackBatches?: boolean;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  lowStockThreshold?: number;
+
+  @IsOptional()
+  @IsDateString()
+  initialExpiresAt?: string;
 }

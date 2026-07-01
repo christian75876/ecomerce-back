@@ -1,13 +1,8 @@
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Role } from './entities/role.entity';
-import {
-  HttpCode,
-  HttpException,
-  HttpStatus,
-  NotFoundException,
-} from '@nestjs/common';
-// import { User } from './entities/user.entity';
 
+@Injectable()
 export class UserService {
   constructor(
     // @InjectRepository(User) private userRepository

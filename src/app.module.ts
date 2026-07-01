@@ -13,6 +13,18 @@ import { SalesModule } from './modules/sales/sales.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { StoresModule } from './modules/stores/stores.module';
+import { SuppliersModule } from './modules/suppliers/suppliers.module';
+import { PurchasesModule } from './modules/purchases/purchases.module';
+import { CashModule } from './modules/cash/cash.module';
+import { AuditModule } from './modules/audit/audit.module';
+import { EmailModule } from './modules/email/email.module';
+import { InvitationsModule } from './modules/invitations/invitations.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
+import { MenuCategoriesModule } from './modules/menu-categories/menu-categories.module';
+import { CouponsModule } from './modules/coupons/coupons.module';
+import { AppConfigModule } from './modules/app-config/app-config.module';
+import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 
 @Module({
   imports: [
@@ -21,7 +33,9 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
       envFilePath: '.env',
     }),
     DatabaseModule,
+    EmailModule,
     AuthModule,
+    InvitationsModule,
     CategoriesModule,
     ProductsModule,
     InventoryModule,
@@ -30,6 +44,16 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
     OrdersModule,
     ReviewsModule,
     DashboardModule,
+    StoresModule,
+    SuppliersModule,
+    PurchasesModule,
+    CashModule,
+    AuditModule,
+    NotificationsModule,
+    MenuCategoriesModule,
+    CouponsModule,
+    AppConfigModule,
+    SubscriptionsModule,
   ],
   providers: [
     AppInitializer,

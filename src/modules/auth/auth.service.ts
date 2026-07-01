@@ -8,8 +8,11 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { User } from '../users/entities/user.entity';
+import { Role } from '../users/entities/role.entity';
+import { Customer } from '../customers/entities/customer.entity';
 import { IsNull, Repository } from 'typeorm';
 import { RegisterDto } from './dto/register.auth.dto';
+import { RegisterCustomerDto } from './dto/register-customer.auth.dto';
 import { LoginAuthDto } from './dto/login.auth.dto';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
@@ -19,6 +22,8 @@ import { VerifyEmailDto } from './dto/verifyEmail.auth.dto';
 import { VerifyRecoverOtpDto } from './dto/verifyRecoverOtp.auth.dto';
 import { ResetPasswordDto } from './dto/resetPassword.auth.dto';
 import { EmailService } from './email.service';
+import { InvitationsService } from '../invitations/invitations.service';
+import { StoresService } from '../stores/stores.service';
 
 @Injectable()
 export class AuthService {
@@ -29,10 +34,15 @@ export class AuthService {
 
   constructor(
     @InjectRepository(User) private readonly userRepository: Repository<User>,
+    @InjectRepository(Role) private readonly roleRepository: Repository<Role>,
+    @InjectRepository(Customer)
+    private readonly customerRepository: Repository<Customer>,
     private jwtService: JwtService,
     @InjectRepository(RecoverToken)
     private readonly recoverTokenRepository: Repository<RecoverToken>,
     private readonly emailService: EmailService,
+    private readonly invitationsService: InvitationsService,
+    private readonly storesService: StoresService,
   ) {}
 
   private normalizeEmail(email: string): string {
@@ -99,29 +109,37 @@ export class AuthService {
 
   async login({ email, password }: LoginAuthDto) {
     const userData = await this.checkCredentials(email, password);
+    const user =
+      userData instanceof User
+        ? await this.userRepository.findOne({
+            where: { id: userData.id },
+            relations: { role: true },
+          })
+        : null;
     const now = Math.floor(Date.now() / 1000);
     const payload = {
-      sub: userData instanceof User && userData.id,
+      sub: user?.id ?? null,
       iat: now,
-      role_id: userData instanceof User && userData.role_id,
-      email: userData instanceof User && userData.email,
+      role_id: user?.role_id ?? null,
+      email: user?.email ?? null,
     };
     return {
       message: 'Login successful',
       token: await this.jwtService.signAsync(payload, { expiresIn: '1h' }),
       user: {
-        id: userData instanceof User ? userData.id : null,
-        email: userData instanceof User ? userData.email : null,
-        role_id: userData instanceof User ? userData.role_id : null,
+        id: user?.id ?? null,
+        email: user?.email ?? null,
+        role_id: user?.role_id ?? null,
+        role: user?.role?.name ?? null,
       },
     };
   }
 
   async getAuthenticatedProfile(userId: number) {
-    const user = await this.userRepository.findOne({
-      where: { id: userId },
-      relations: { role: true },
-    });
+    const [user, customer] = await Promise.all([
+      this.userRepository.findOne({ where: { id: userId }, relations: { role: true } }),
+      this.customerRepository.findOne({ where: { userId } }),
+    ]);
 
     if (!user) {
       throw new NotFoundException('Authenticated user not found');
@@ -134,6 +152,37 @@ export class AuthService {
       role: user.role?.name ?? null,
       isEmailVerified: user.isEmailVerified,
       createdAt: user.createdAt,
+      customer: customer
+        ? {
+            id: customer.id,
+            firstName: customer.firstName,
+            lastName: customer.lastName,
+            phone: customer.phone,
+          }
+        : null,
+    };
+  }
+
+  async updateMyProfile(
+    userId: number,
+    dto: import('./dto/update-my-profile.auth.dto').UpdateMyProfileDto,
+  ) {
+    const customer = await this.customerRepository.findOne({ where: { userId } });
+    if (!customer) {
+      throw new NotFoundException('Profile not found');
+    }
+
+    if (typeof dto.firstName === 'string') customer.firstName = dto.firstName.trim();
+    if (typeof dto.lastName === 'string') customer.lastName = dto.lastName.trim();
+    if (typeof dto.phone === 'string') customer.phone = dto.phone.trim() || null;
+
+    const saved = await this.customerRepository.save(customer);
+
+    return {
+      id: saved.id,
+      firstName: saved.firstName,
+      lastName: saved.lastName,
+      phone: saved.phone,
     };
   }
 
@@ -193,6 +242,100 @@ export class AuthService {
       ...(process.env.NODE_ENV !== 'production' && !emailSent
         ? { verification_token: verificationToken }
         : {}),
+    };
+  }
+
+  async registerCustomer({
+    name,
+    email,
+    password,
+    phone,
+    inviteToken,
+  }: RegisterCustomerDto) {
+    const normalizedEmail = await this.checkDoesEmailExist(email);
+
+    let assignedRole = await this.roleRepository.findOne({ where: { name: 'buyer' } });
+    let isInvited = false;
+
+    if (inviteToken) {
+      const invitation = await this.invitationsService.validateToken(inviteToken);
+      if (invitation.email !== normalizedEmail) {
+        throw new BadRequestException('El correo no coincide con la invitación');
+      }
+      const sellerRole = await this.roleRepository.findOne({ where: { name: 'seller' } });
+      if (sellerRole) {
+        assignedRole = sellerRole;
+        isInvited = true;
+      }
+    }
+
+    if (!assignedRole) {
+      throw new NotFoundException('Role not configured');
+    }
+
+    const { user, customer } =
+      await this.userRepository.manager.transaction(async (em) => {
+        const hashedPass = await bcrypt.hash(password, bcrypt.genSaltSync(10));
+        const user = em.create(User, {
+          role_id: assignedRole.id,
+          email: normalizedEmail,
+          password: hashedPass,
+          isEmailVerified: true,
+        });
+        await em.save(user);
+
+        const [firstName, ...restName] = name.trim().split(/\s+/);
+        const customer = em.create(Customer, {
+          firstName,
+          lastName: restName.join(' ') || 'Vendedor',
+          email: normalizedEmail,
+          phone: phone?.trim() || null,
+          userId: user.id,
+        });
+        await em.save(customer);
+
+        return { user, customer };
+      });
+
+    if (isInvited && inviteToken) {
+      await this.invitationsService.markAccepted(inviteToken);
+      // Auto-create store for new seller
+      try {
+        const baseSlug = name.trim().toLowerCase()
+          .replace(/\s+/g, '-')
+          .replace(/[^a-z0-9-]/g, '')
+          .replace(/-+/g, '-')
+          .slice(0, 40);
+        const slug = `${baseSlug}-${user.id}`;
+        await this.storesService.create({ name: name.trim(), slug, userId: user.id });
+      } catch {
+        // Non-critical: store can be created later by admin
+      }
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    const payload = {
+      sub: user.id,
+      iat: now,
+      role_id: assignedRole.id,
+      email: user.email,
+    };
+
+    return {
+      message: isInvited ? 'Vendedor registrado correctamente' : 'Cliente registrado correctamente',
+      token: await this.jwtService.signAsync(payload, { expiresIn: '1h' }),
+      user: {
+        id: user.id,
+        email: user.email,
+        role_id: user.role_id,
+        role: assignedRole.name,
+      },
+      customer: {
+        id: customer.id,
+        firstName: customer.firstName,
+        lastName: customer.lastName,
+        phone: customer.phone,
+      },
     };
   }
 

@@ -5,12 +5,15 @@ import {
   Get,
   Param,
   Post,
+  Req,
   UploadedFiles,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
+import { memoryStorage } from 'multer';
+import { Request } from 'express';
+import { JwtAuthGuard } from '../auth/guards/jwt.auth.guard';
 import { CreateReviewDto } from './dto/create-review.dto';
 import { ReviewsService } from './reviews.service';
 
@@ -29,36 +32,40 @@ export class ReviewsController {
     return this.reviewsService.getProductReviews(productId);
   }
 
+  @Get('products/:productId/reviews/me')
+  @UseGuards(JwtAuthGuard)
+  async getMyReviewEligibility(
+    @Param('productId') productId: string,
+    @Req() req: Request & { user: { userId: number } },
+  ) {
+    return this.reviewsService.getReviewEligibility(productId, req.user.userId);
+  }
+
   @Post('products/:productId/reviews')
+  @UseGuards(JwtAuthGuard)
   @UseInterceptors(
     FilesInterceptor('images', 3, {
-      storage: diskStorage({
-        destination: './uploads/reviews',
-        filename: (_req, file, callback) => {
-          const suffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-          callback(null, `${suffix}${extname(file.originalname)}`);
-        },
-      }),
+      storage: memoryStorage(),
       fileFilter: (_req, file, callback) => {
         if (!allowedMimeTypes.has(file.mimetype)) {
-          return callback(
-            new BadRequestException('Invalid image format'),
-            false,
-          );
+          return callback(new BadRequestException('Invalid image format'), false);
         }
-
         callback(null, true);
       },
-      limits: {
-        fileSize: 2 * 1024 * 1024,
-      },
+      limits: { fileSize: 8 * 1024 * 1024 },
     }),
   )
   async createReview(
     @Param('productId') productId: string,
     @Body() createReviewDto: CreateReviewDto,
+    @Req() req: Request & { user: { userId: number } },
     @UploadedFiles() files: Express.Multer.File[],
   ) {
-    return this.reviewsService.createReview(productId, createReviewDto, files);
+    return this.reviewsService.createOrUpdateReview(
+      productId,
+      req.user.userId,
+      createReviewDto,
+      files,
+    );
   }
 }

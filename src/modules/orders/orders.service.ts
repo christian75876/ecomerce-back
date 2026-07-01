@@ -3,12 +3,15 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import { Customer } from '../customers/entities/customer.entity';
 import { Product } from '../products/entities/product.entity';
+import { Store } from '../stores/entities/store.entity';
 import { InventoryService } from '../inventory/inventory.service';
-import { InventoryMovementType } from '../inventory/entities/inventory-movement.entity';
 import { Order, OrderStatus } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
+import { InventoryReferenceType } from '../inventory/entities/inventory-batch-allocation.entity';
+import { NotificationsService } from '../notifications/notifications.service';
+import { CouponsService } from '../coupons/coupons.service';
 
 @Injectable()
 export class OrdersService {
@@ -23,10 +26,66 @@ export class OrdersService {
     @InjectRepository(OrderItem)
     private readonly orderItemsRepository: Repository<OrderItem>,
     private readonly inventoryService: InventoryService,
+    private readonly notificationsService: NotificationsService,
+    private readonly couponsService: CouponsService,
   ) {}
 
-  async findAll() {
+  async findAll(storeId?: string, page = 1, limit = 20, status?: string, search?: string) {
+    const take = Math.min(Math.max(limit, 1), 100);
+    const safePage = Math.max(page, 1);
+    const skip = (safePage - 1) * take;
+
+    const qb = this.ordersRepository
+      .createQueryBuilder('order')
+      .leftJoinAndSelect('order.customer', 'customer')
+      .leftJoinAndSelect('order.items', 'item')
+      .leftJoinAndSelect('item.product', 'product')
+      .orderBy('order.createdAt', 'DESC')
+      .take(take)
+      .skip(skip);
+
+    // Filter by store using EXISTS to avoid duplicate rows from item joins
+    if (storeId) {
+      qb.andWhere(
+        `EXISTS (
+          SELECT 1 FROM order_items oi
+          JOIN products p ON oi.product_id = p.id
+          WHERE oi.order_id = order.id AND p.store_id = :storeId
+        )`,
+        { storeId },
+      );
+    }
+
+    if (status) {
+      qb.andWhere('order.status = :status', { status });
+    }
+
+    if (search) {
+      const s = `%${search.toLowerCase()}%`;
+      qb.andWhere(
+        `(LOWER(CAST(order.id AS TEXT)) LIKE :s
+          OR LOWER(customer.first_name) LIKE :s
+          OR LOWER(customer.last_name) LIKE :s
+          OR LOWER(customer.email) LIKE :s)`,
+        { s },
+      );
+    }
+
+    const [items, total] = await qb.getManyAndCount();
+    return { items, total, page: safePage, limit: take, totalPages: Math.ceil(total / take) };
+  }
+
+  async findMine(userId: number) {
+    const customer = await this.customersRepository.findOne({
+      where: { userId },
+    });
+
+    if (!customer) {
+      return [];
+    }
+
     return this.ordersRepository.find({
+      where: { customerId: customer.id },
       order: { createdAt: 'DESC' },
     });
   }
@@ -39,12 +98,40 @@ export class OrdersService {
     return order;
   }
 
+  async findMyOne(id: string, userId: number) {
+    const customer = await this.customersRepository.findOne({
+      where: { userId },
+    });
+
+    if (!customer) {
+      throw new NotFoundException('Order not found');
+    }
+
+    const order = await this.ordersRepository.findOne({
+      where: {
+        id,
+        customerId: customer.id,
+      },
+    });
+
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+
+    return order;
+  }
+
   async create(createOrderDto: CreateOrderDto) {
-    return this.dataSource.transaction(async (manager) => {
-      const customer = await this.resolveCustomer(createOrderDto, manager);
+    let notifyCustomer: Customer;
+    let notifyStores: Store[] = [];
+    let appliedCouponId: string | null = null;
+    let appliedCouponCode: string | null = null;
+
+    const savedOrderId = await this.dataSource.transaction(async (manager) => {
       const productsRepository = manager.getRepository(Product);
       const items = [];
       let total = 0;
+      const storeMap = new Map<string, Store>();
 
       for (const item of createOrderDto.items) {
         const product = await productsRepository.findOne({
@@ -62,6 +149,10 @@ export class OrdersService {
           );
         }
 
+        if (product.store && !storeMap.has(product.store.id)) {
+          storeMap.set(product.store.id, product.store);
+        }
+
         const lineTotal = Number(product.price) * item.quantity;
         total += lineTotal;
 
@@ -73,10 +164,49 @@ export class OrdersService {
         });
       }
 
+      notifyStores = [...storeMap.values()];
+      const customerStoreId =
+        storeMap.size === 1 ? Array.from(storeMap.keys())[0] : null;
+      const customer = await this.resolveCustomer(
+        createOrderDto,
+        manager,
+        customerStoreId,
+      );
+      notifyCustomer = customer;
+
+      let discountAmount = 0;
+
+      if (createOrderDto.couponCode?.trim()) {
+        try {
+          const { coupon, discountAmount: discount } = await this.couponsService.validate(
+            createOrderDto.couponCode,
+            total,
+          );
+          discountAmount = discount;
+          appliedCouponCode = coupon.code;
+          appliedCouponId = coupon.id;
+        } catch {
+          throw new BadRequestException(
+            `Cupón inválido: ${createOrderDto.couponCode}`,
+          );
+        }
+      }
+
+      const finalTotal = Math.max(0, total - discountAmount);
+
       const order = manager.create(Order, {
         customerId: customer.id,
-        total,
+        total: finalTotal,
         status: OrderStatus.PENDING,
+        deliveryMethod: createOrderDto.deliveryMethod ?? null,
+        deliveryAddress: createOrderDto.deliveryAddress?.trim() || null,
+        deliveryCity: createOrderDto.deliveryCity?.trim() || null,
+        deliveryDepartment: createOrderDto.deliveryDepartment?.trim() || null,
+        deliveryNotes: createOrderDto.deliveryNotes?.trim() || null,
+        deliveryLat: createOrderDto.deliveryLat ?? null,
+        deliveryLng: createOrderDto.deliveryLng ?? null,
+        couponCode: appliedCouponCode,
+        discountAmount,
       });
       const savedOrder = await manager.save(order);
 
@@ -86,28 +216,45 @@ export class OrdersService {
           ...item,
         });
         await manager.save(orderItem);
-        await this.inventoryService.createSystemMovement({
+        await this.inventoryService.consumeStock({
           productId: item.productId,
-          movementType: InventoryMovementType.ORDER,
-          quantityDelta: -item.quantity,
+          quantity: item.quantity,
+          referenceType: InventoryReferenceType.ORDER,
+          referenceId: savedOrder.id,
+          referenceItemId: orderItem.id,
           note: `Order ${savedOrder.id}`,
           manager,
         });
       }
 
-      return this.findOne(savedOrder.id);
+      return savedOrder.id;
     });
+
+    const fullOrder = await this.findOne(savedOrderId);
+
+    // Increment coupon usage (outside transaction to avoid blocking)
+    if (appliedCouponId) {
+      void this.couponsService.incrementUsage(appliedCouponId);
+    }
+
+    // Fire-and-forget: notify via SSE + WhatsApp
+    void this.notificationsService.notifyNewOrder(fullOrder, notifyCustomer!, notifyStores);
+
+    return fullOrder;
   }
 
   private async resolveCustomer(
     createOrderDto: CreateOrderDto,
     manager: EntityManager,
+    storeId?: string | null,
   ) {
     const customersRepository = manager.getRepository(Customer);
 
     if (createOrderDto.customerId) {
       const customer = await customersRepository.findOne({
-        where: { id: createOrderDto.customerId },
+        where: storeId
+          ? { id: createOrderDto.customerId, storeId }
+          : { id: createOrderDto.customerId },
       });
 
       if (!customer) {
@@ -123,7 +270,9 @@ export class OrdersService {
 
     const normalizedEmail = createOrderDto.customer.email.trim().toLowerCase();
     const existingCustomer = await customersRepository.findOne({
-      where: { email: normalizedEmail },
+      where: storeId
+        ? { email: normalizedEmail, storeId }
+        : { email: normalizedEmail },
     });
 
     if (existingCustomer) {
@@ -135,6 +284,7 @@ export class OrdersService {
       lastName: createOrderDto.customer.lastName.trim(),
       email: normalizedEmail,
       phone: createOrderDto.customer.phone?.trim() || null,
+      storeId: storeId ?? null,
     });
 
     return customersRepository.save(customer);
@@ -148,14 +298,12 @@ export class OrdersService {
       updateOrderStatusDto.status === OrderStatus.CANCELLED &&
       order.status !== OrderStatus.CANCELLED
     ) {
-      for (const item of order.items) {
-        await this.inventoryService.createSystemMovement({
-          productId: item.productId,
-          movementType: InventoryMovementType.ORDER_CANCEL,
-          quantityDelta: item.quantity,
-          note: `Order cancellation ${order.id}`,
-        });
-      }
+      await this.inventoryService.restoreStockFromAllocations({
+        referenceType: InventoryReferenceType.ORDER,
+        referenceId: order.id,
+        note: `Order cancellation ${order.id}`,
+        restoredReferenceType: InventoryReferenceType.ORDER_CANCEL,
+      });
     }
 
     order.status = updateOrderStatusDto.status;

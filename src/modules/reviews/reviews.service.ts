@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -12,6 +11,7 @@ import { Order, OrderStatus } from '../orders/entities/order.entity';
 import { Review } from './entities/review.entity';
 import { ReviewImage } from './entities/review-image.entity';
 import { CreateReviewDto } from './dto/create-review.dto';
+import { CloudinaryService } from '../cloudinary/cloudinary.service';
 
 @Injectable()
 export class ReviewsService {
@@ -26,6 +26,7 @@ export class ReviewsService {
     private readonly reviewsRepository: Repository<Review>,
     @InjectRepository(ReviewImage)
     private readonly reviewImagesRepository: Repository<ReviewImage>,
+    private readonly cloudinaryService: CloudinaryService,
   ) {}
 
   async getProductReviews(productId: string) {
@@ -55,19 +56,51 @@ export class ReviewsService {
     };
   }
 
-  async createReview(
+  async getReviewEligibility(productId: string, userId: number) {
+    await this.ensureProductExists(productId);
+
+    const customer = await this.customersRepository.findOne({
+      where: { userId },
+    });
+
+    if (!customer) {
+      return {
+        canReview: false,
+        hasPurchased: false,
+        review: null,
+      };
+    }
+
+    const review = await this.reviewsRepository.findOne({
+      where: {
+        customerId: customer.id,
+        productId,
+      },
+    });
+
+    const validOrder = await this.findValidOrderForReview(customer.id, productId);
+
+    return {
+      canReview: Boolean(validOrder),
+      hasPurchased: Boolean(validOrder),
+      review,
+    };
+  }
+
+  async createOrUpdateReview(
     productId: string,
+    userId: number,
     createReviewDto: CreateReviewDto,
     files: Express.Multer.File[] = [],
   ) {
     await this.ensureProductExists(productId);
 
     const customer = await this.customersRepository.findOne({
-      where: { id: createReviewDto.customerId },
+      where: { userId },
     });
 
     if (!customer) {
-      throw new NotFoundException('Customer not found');
+      throw new NotFoundException('Customer profile not found for this user');
     }
 
     const existingReview = await this.reviewsRepository.findOne({
@@ -76,10 +109,6 @@ export class ReviewsService {
         productId,
       },
     });
-
-    if (existingReview) {
-      throw new ConflictException('This customer already reviewed the product');
-    }
 
     const validOrder = await this.findValidOrderForReview(customer.id, productId);
 
@@ -93,23 +122,32 @@ export class ReviewsService {
       throw new BadRequestException('A review supports up to 3 images');
     }
 
-    const review = this.reviewsRepository.create({
-      customerId: customer.id,
-      productId,
-      orderId: validOrder.id,
-      rating: createReviewDto.rating,
-      comment: createReviewDto.comment.trim(),
-      isVisible: true,
-    });
+    const review = existingReview
+      ? Object.assign(existingReview, {
+          orderId: validOrder.id,
+          rating: createReviewDto.rating,
+          comment: createReviewDto.comment.trim(),
+          isVisible: true,
+        })
+      : this.reviewsRepository.create({
+          customerId: customer.id,
+          productId,
+          orderId: validOrder.id,
+          rating: createReviewDto.rating,
+          comment: createReviewDto.comment.trim(),
+          isVisible: true,
+        });
 
     const savedReview = await this.reviewsRepository.save(review);
 
     if (files.length > 0) {
-      const images = files.map((file) =>
-        this.reviewImagesRepository.create({
-          reviewId: savedReview.id,
-          url: `/uploads/reviews/${file.filename}`,
-        }),
+      await this.reviewImagesRepository.delete({ reviewId: savedReview.id });
+
+      const urls = await Promise.all(
+        files.map((file) => this.cloudinaryService.uploadImage(file.buffer, 'reviews')),
+      );
+      const images = urls.map((url) =>
+        this.reviewImagesRepository.create({ reviewId: savedReview.id, url }),
       );
       await this.reviewImagesRepository.save(images);
     }

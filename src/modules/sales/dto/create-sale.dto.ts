@@ -1,13 +1,15 @@
 import {
   ArrayMinSize,
   IsArray,
+  IsEnum,
   IsInt,
-  IsNotEmpty,
+  IsOptional,
   IsUUID,
   Min,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { SalePaymentMethod } from '../entities/sale.entity';
 
 class CreateSaleItemDto {
   @IsUUID()
@@ -20,6 +22,22 @@ class CreateSaleItemDto {
 }
 
 export class CreateSaleDto {
+  @IsOptional()
+  @IsUUID()
+  customerId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  storeId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  cashSessionId?: string;
+
+  @IsOptional()
+  @IsEnum(SalePaymentMethod)
+  paymentMethod?: SalePaymentMethod;
+
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })

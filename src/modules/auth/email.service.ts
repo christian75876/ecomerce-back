@@ -78,6 +78,27 @@ export class EmailService {
     await this.sendEmail(to, subject, html, text);
   }
 
+  async sendInvitationEmail(to: string, token: string): Promise<void> {
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const inviteUrl = `${frontendUrl}/register?token=${encodeURIComponent(token)}`;
+    const subject = `Invitación para crear tu tienda — ${this.appName}`;
+    const text = `Fuiste invitado a crear una tienda en ${this.appName}. Acepta la invitación aquí: ${inviteUrl} (válido por 48 horas)`;
+    const html = `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
+        <h2 style="color:#6366f1">¡Fuiste invitado como vendedor!</h2>
+        <p>Hola, el administrador de <strong>${this.appName}</strong> te invitó a crear tu propia tienda en el marketplace.</p>
+        <p style="margin:24px 0">
+          <a href="${inviteUrl}"
+             style="background:#6366f1;color:#fff;padding:12px 28px;border-radius:12px;text-decoration:none;font-weight:600;display:inline-block">
+            Aceptar invitación
+          </a>
+        </p>
+        <p style="color:#64748b;font-size:13px">Este enlace es válido por 48 horas y es de un solo uso. Si no esperabas este correo, ignóralo.</p>
+      </div>
+    `;
+    await this.sendEmail(to, subject, html, text);
+  }
+
   async sendRecoveryOtpEmail(to: string, otp: string): Promise<void> {
     const subject = `Password recovery code - ${this.appName}`;
     const text =

@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { Category } from './entities/category.entity';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
@@ -16,37 +16,43 @@ export class CategoriesService {
     private readonly categoriesRepository: Repository<Category>,
   ) {}
 
-  async findAll(active?: boolean) {
-    const where =
-      typeof active === 'boolean'
-        ? {
-            isActive: active,
-          }
-        : {};
+  async findAll(active?: boolean, storeId?: string) {
+    const where: any = {};
+    if (typeof active === 'boolean') where.isActive = active;
+
+    if (storeId) {
+      // Return store-specific categories for this store
+      where.storeId = storeId;
+    } else {
+      // Return global categories (no store assigned) for admin views
+      where.storeId = IsNull();
+    }
 
     return this.categoriesRepository.find({
       where,
-      order: {
-        createdAt: 'DESC',
-      },
+      order: { name: 'ASC' },
     });
   }
 
   async create(createCategoryDto: CreateCategoryDto) {
     const normalizedName = createCategoryDto.name.trim();
+    const storeId = createCategoryDto.storeId ?? null;
+
     const existingCategory = await this.categoriesRepository.findOne({
       where: {
         name: normalizedName,
+        storeId: storeId ?? IsNull(),
       },
     });
 
     if (existingCategory) {
-      throw new ConflictException('Category name is already in use');
+      throw new ConflictException('Ya existe una categoría con ese nombre en esta tienda');
     }
 
     const category = this.categoriesRepository.create({
       name: normalizedName,
       isActive: createCategoryDto.isActive ?? true,
+      storeId,
     });
 
     return this.categoriesRepository.save(category);
@@ -64,11 +70,14 @@ export class CategoriesService {
     if (updateCategoryDto.name) {
       const normalizedName = updateCategoryDto.name.trim();
       const existingCategory = await this.categoriesRepository.findOne({
-        where: { name: normalizedName },
+        where: {
+          name: normalizedName,
+          storeId: category.storeId ?? IsNull(),
+        },
       });
 
       if (existingCategory && existingCategory.id !== id) {
-        throw new ConflictException('Category name is already in use');
+        throw new ConflictException('Ya existe una categoría con ese nombre');
       }
 
       category.name = normalizedName;

@@ -1,5 +1,7 @@
 import {
+  IsDateString,
   IsBoolean,
+  IsInt,
   IsNumber,
   IsOptional,
   IsString,
@@ -8,6 +10,7 @@ import {
   Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+
 
 export class UpdateProductDto {
   @IsOptional()
@@ -35,6 +38,30 @@ export class UpdateProductDto {
   categoryId?: string;
 
   @IsOptional()
+  @IsUUID()
+  storeId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  menuCategoryId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  supplierId?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  cost?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  compareAtPrice?: number;
+
+  @IsOptional()
   @IsString()
   @MaxLength(500)
   imageUrl?: string;
@@ -46,4 +73,22 @@ export class UpdateProductDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isPerishable?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  trackBatches?: boolean;
+
+  @IsOptional()
+  @IsDateString()
+  initialExpiresAt?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  lowStockThreshold?: number;
 }

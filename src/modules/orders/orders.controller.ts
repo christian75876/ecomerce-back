@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt.auth.guard';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -10,8 +11,35 @@ export class OrdersController {
 
   @Get()
   @UseGuards(JwtAuthGuard)
-  async findAll() {
-    return this.ordersService.findAll();
+  async findAll(
+    @Query('storeId') storeId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('status') status?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.ordersService.findAll(
+      storeId,
+      page ? (parseInt(page, 10) || 1) : 1,
+      limit ? (parseInt(limit, 10) || 20) : 20,
+      status || undefined,
+      search?.trim() || undefined,
+    );
+  }
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  async findMine(@Req() req: Request & { user: { userId: number } }) {
+    return this.ordersService.findMine(req.user.userId);
+  }
+
+  @Get('me/:id')
+  @UseGuards(JwtAuthGuard)
+  async findMyOne(
+    @Param('id') id: string,
+    @Req() req: Request & { user: { userId: number } },
+  ) {
+    return this.ordersService.findMyOne(id, req.user.userId);
   }
 
   @Get(':id')

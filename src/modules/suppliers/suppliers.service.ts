@@ -17,10 +17,15 @@ export class SuppliersService {
     private readonly suppliersRepository: Repository<Supplier>,
   ) {}
 
-  async findAll(search?: string, allowedStoreIds?: string[]) {
+  async findAll(search?: string, allowedStoreIds?: string[], page = 1, limit = 15) {
+    const take = Math.min(Math.max(limit, 1), 100);
+    const skip = (Math.max(page, 1) - 1) * take;
+
     const builder = this.suppliersRepository
       .createQueryBuilder('supplier')
-      .orderBy('supplier.createdAt', 'DESC');
+      .orderBy('supplier.createdAt', 'DESC')
+      .take(take)
+      .skip(skip);
 
     if (allowedStoreIds?.length) {
       builder.where('supplier.storeId IN (:...storeIds)', { storeIds: allowedStoreIds });
@@ -30,12 +35,13 @@ export class SuppliersService {
       const like = `%${search.trim()}%`;
       const method = allowedStoreIds?.length ? 'andWhere' : 'where';
       builder[method](
-        '(supplier.name ILIKE :like OR supplier.email ILIKE :like)',
+        '(supplier.name ILIKE :like OR supplier.email ILIKE :like OR supplier.document ILIKE :like OR supplier.phone ILIKE :like)',
         { like },
       );
     }
 
-    return builder.getMany();
+    const [items, total] = await builder.getManyAndCount();
+    return { items, total, page: Math.max(page, 1), limit: take, totalPages: Math.ceil(total / take) || 1 };
   }
 
   async getOptions(query: QuerySupplierOptionsDto, allowedStoreIds?: string[]) {
@@ -117,11 +123,11 @@ export class SuppliersService {
 
     if (payload.name && payload.name.trim() !== supplier.name) {
       const existing = await this.suppliersRepository.findOne({
-        where: { name: payload.name.trim() },
+        where: { name: payload.name.trim(), storeId: supplier.storeId },
       });
 
       if (existing && existing.id !== id) {
-        throw new ConflictException('Supplier name is already in use');
+        throw new ConflictException('Supplier name is already in use for this store');
       }
     }
 

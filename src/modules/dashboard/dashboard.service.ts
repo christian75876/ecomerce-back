@@ -152,7 +152,7 @@ export class DashboardService {
 
     const relevantOrderItemsForStore = (order: Order) =>
       order.items.filter(
-        (item) => !query.storeId || !item.product.storeId || item.product.storeId === query.storeId,
+        (item) => !query.storeId || !item.product?.storeId || item.product?.storeId === query.storeId,
       );
 
     const filteredOrders = orders.filter((order) => {
@@ -222,7 +222,7 @@ export class DashboardService {
     const salesTodayOnline = orders
       .filter(
         (order) =>
-          order.status !== OrderStatus.CANCELLED &&
+          [OrderStatus.PAID, OrderStatus.PREPARING, OrderStatus.SHIPPED, OrderStatus.DELIVERED].includes(order.status) &&
           new Date(order.createdAt) >= todayStart &&
           new Date(order.createdAt) <= todayEnd,
       )
@@ -309,6 +309,18 @@ export class DashboardService {
             return acc + total;
           }, 0);
 
+        const dayOrderCogs = activeOrders
+          .filter((order) => {
+            const createdAt = new Date(order.createdAt);
+            return createdAt >= day && createdAt < nextDay;
+          })
+          .reduce((acc, order) => {
+            return acc + order.items.reduce((sum, item) => {
+              const costPerUnit = item.product?.cost != null ? Number(item.product.cost) : 0;
+              return sum + costPerUnit * item.quantity;
+            }, 0);
+          }, 0);
+
         return {
           label: day.toLocaleDateString('es-CO', {
             month: 'short',
@@ -317,7 +329,7 @@ export class DashboardService {
           pos: Number(pos.toFixed(2)),
           online: Number(online.toFixed(2)),
           total: Number((pos + online).toFixed(2)),
-          profit: Number((pos - dayCogs).toFixed(2)),
+          profit: Number((pos + online - dayCogs - dayOrderCogs).toFixed(2)),
         };
       });
     };
@@ -539,7 +551,7 @@ export class DashboardService {
     )) {
       const current = supplierDebtMap.get(purchase.supplierId) ?? {
         supplierId: purchase.supplierId,
-        name: purchase.supplier.name,
+        name: purchase.supplier?.name ?? 'Proveedor eliminado',
         balance: 0,
         lastPurchaseAt: null,
         lastPaidAmount: 0,

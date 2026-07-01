@@ -18,8 +18,8 @@ export class OrdersController {
   ) {
     return this.ordersService.findAll(
       storeId,
-      page ? parseInt(page, 10) : 1,
-      limit ? parseInt(limit, 10) : 20,
+      page ? (parseInt(page, 10) || 1) : 1,
+      limit ? (parseInt(limit, 10) || 20) : 20,
     );
   }
 

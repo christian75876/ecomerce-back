@@ -25,13 +25,20 @@ export class SuppliersController {
   @Get()
   async findAll(
     @Query('search') search: string | undefined,
+    @Query('page') page: string | undefined,
+    @Query('limit') limit: string | undefined,
     @Request() req: { user: { userId: number; role: string } },
   ) {
     const allowedStoreIds =
       req.user.role === 'seller'
         ? await this.getSellerStoreIds(req.user.userId)
         : undefined;
-    return this.suppliersService.findAll(search, allowedStoreIds);
+    return this.suppliersService.findAll(
+      search,
+      allowedStoreIds,
+      page ? parseInt(page, 10) : 1,
+      limit ? parseInt(limit, 10) : 15,
+    );
   }
 
   @Get('options')

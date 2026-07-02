@@ -20,16 +20,12 @@ export class DatabaseConfigService implements TypeOrmOptionsFactory {
     };
 
     if (databaseUrl) {
-      const parsed = new URL(databaseUrl);
       return {
         ...base,
         type: 'postgres',
-        host: parsed.hostname,
-        port: parseInt(parsed.port) || 5432,
-        username: decodeURIComponent(parsed.username),
-        password: decodeURIComponent(parsed.password),
-        database: parsed.pathname.replace(/^\//, ''),
+        url: databaseUrl,
         ssl: { rejectUnauthorized: false },
+        extra: { ssl: { rejectUnauthorized: false } },
       } as TypeOrmModuleOptions;
     }
 

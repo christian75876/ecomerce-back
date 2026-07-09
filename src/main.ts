@@ -1,8 +1,10 @@
-// Force SSL for all pg connections (required for Aiven/cloud PostgreSQL)
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pg = require('pg');
-pg.defaults.ssl = { rejectUnauthorized: false };
+// SSL only for cloud databases (Aiven/Railway). Not needed for local Docker.
+if (process.env.DB_SSL === 'true') {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const pg = require('pg');
+  pg.defaults.ssl = { rejectUnauthorized: false };
+}
 
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';

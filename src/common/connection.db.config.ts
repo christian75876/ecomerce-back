@@ -19,12 +19,14 @@ export class DatabaseConfigService implements TypeOrmOptionsFactory {
       logger: 'advanced-console',
     };
 
+    const useSSL = process.env.DB_SSL === 'true';
+
     if (databaseUrl) {
       return {
         ...base,
         type: 'postgres',
         url: databaseUrl,
-        ssl: { rejectUnauthorized: false },
+        ...(useSSL ? { ssl: { rejectUnauthorized: false }, extra: { ssl: { rejectUnauthorized: false } } } : {}),
       } as TypeOrmModuleOptions;
     }
 

@@ -17,17 +17,18 @@ export class CategoriesService {
   ) {}
 
   async findAll(active?: boolean, storeId?: string) {
-    const where: any = {};
-    if (typeof active === 'boolean') where.isActive = active;
+    const qb = this.categoriesRepository
+      .createQueryBuilder('category')
+      .loadRelationCountAndMap('category.productCount', 'category.products');
 
+    if (typeof active === 'boolean') {
+      qb.andWhere('category.isActive = :active', { active });
+    }
     if (storeId) {
-      where.storeId = storeId;
+      qb.andWhere('category.storeId = :storeId', { storeId });
     }
 
-    return this.categoriesRepository.find({
-      where,
-      order: { name: 'ASC' },
-    });
+    return qb.orderBy('category.name', 'ASC').getMany();
   }
 
   async create(createCategoryDto: CreateCategoryDto) {

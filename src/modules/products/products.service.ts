@@ -92,6 +92,7 @@ export class ProductsService {
         qb.andWhere(
           '(store.id IS NULL OR store.subscriptionExpiresAt IS NULL OR store.subscriptionExpiresAt > NOW())',
         );
+        qb.andWhere('category.isActive = true');
       }
     }
     if (filters.minPrice !== undefined) {

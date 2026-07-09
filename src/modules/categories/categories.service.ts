@@ -21,11 +21,7 @@ export class CategoriesService {
     if (typeof active === 'boolean') where.isActive = active;
 
     if (storeId) {
-      // Return store-specific categories for this store
       where.storeId = storeId;
-    } else {
-      // Return global categories (no store assigned) for admin views
-      where.storeId = IsNull();
     }
 
     return this.categoriesRepository.find({

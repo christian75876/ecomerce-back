@@ -23,7 +23,15 @@ export class SuppliersService {
 
     const builder = this.suppliersRepository
       .createQueryBuilder('supplier')
-      .orderBy('supplier.createdAt', 'DESC')
+      .addSelect((sub) =>
+        sub
+          .select('COALESCE(SUM(p.balance), 0)')
+          .from('purchases', 'p')
+          .where('p.supplier_id = supplier.id')
+          .andWhere("p.status != 'CANCELLED'"),
+        'pendingBalance',
+      )
+      .orderBy('supplier.created_at', 'DESC')
       .take(take)
       .skip(skip);
 
@@ -40,7 +48,16 @@ export class SuppliersService {
       );
     }
 
-    const [items, total] = await builder.getManyAndCount();
+    const [total, { entities, raw }] = await Promise.all([
+      builder.getCount(),
+      builder.getRawAndEntities(),
+    ]);
+
+    const items = entities.map((entity, i) => ({
+      ...entity,
+      pendingBalance: Number(raw[i]?.pendingBalance ?? 0),
+    }));
+
     return { items, total, page: Math.max(page, 1), limit: take, totalPages: Math.ceil(total / take) || 1 };
   }
 

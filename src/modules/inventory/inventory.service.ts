@@ -115,6 +115,7 @@ export class InventoryService {
     const [batches, totalItems] = await this.batchesRepository.findAndCount({
       where,
       order: { expiresAt: 'ASC', receivedAt: 'ASC' },
+      relations: ['product', 'supplier'],
       skip,
       take: limit,
     });
@@ -143,6 +144,8 @@ export class InventoryService {
 
     const qb = this.batchesRepository
       .createQueryBuilder('batch')
+      .leftJoinAndSelect('batch.product', 'product')
+      .leftJoinAndSelect('batch.supplier', 'supplier')
       .where('batch.expiresAt <= :threshold', { threshold })
       .andWhere('batch.availableQuantity > 0')
       .andWhere('batch.expiresAt IS NOT NULL');

@@ -1,6 +1,8 @@
 import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt.auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from 'src/common/decorators/roles.decorator';
 import { SubscriptionsService } from './subscriptions.service';
 import { CreateSubscriptionDto } from './dto/create-subscription.dto';
 import { CreatePlanDto } from './dto/create-plan.dto';
@@ -12,6 +14,8 @@ export class SubscriptionsController {
 
   // ── Admin Dashboard ──────────────────────────────────────────────────────
   @Get('admin-dashboard')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
   async getAdminDashboard() {
     return this.subscriptionsService.getAdminDashboard();
   }
@@ -23,11 +27,15 @@ export class SubscriptionsController {
   }
 
   @Post('plans')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
   async createPlan(@Body() dto: CreatePlanDto) {
     return this.subscriptionsService.createPlan(dto);
   }
 
   @Patch('plans/:id')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
   async updatePlan(@Param('id') id: string, @Body() dto: Partial<CreatePlanDto>) {
     return this.subscriptionsService.updatePlan(id, dto);
   }
@@ -44,6 +52,8 @@ export class SubscriptionsController {
   }
 
   @Post()
+  @UseGuards(RolesGuard)
+  @Roles('admin')
   async registerPayment(
     @Body() dto: CreateSubscriptionDto,
     @Req() req: Request & { user: { userId: number } },
@@ -52,6 +62,8 @@ export class SubscriptionsController {
   }
 
   @Patch(':id/cancel')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
   async cancelSubscription(@Param('id') id: string) {
     return this.subscriptionsService.cancelSubscription(id);
   }

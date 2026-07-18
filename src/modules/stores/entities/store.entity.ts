@@ -150,6 +150,9 @@ export class Store {
   @Column({ name: 'is_premium_advertiser', type: 'boolean', default: false })
   isPremiumAdvertiser: boolean;
 
+  @Column({ name: 'advertising_expires_at', type: 'timestamp', nullable: true })
+  advertisingExpiresAt: Date | null;
+
   @Column({ name: 'subscription_expires_at', type: 'timestamp', nullable: true })
   subscriptionExpiresAt: Date | null;
 

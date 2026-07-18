@@ -16,10 +16,12 @@ export class InventoryController {
   async getInventorySummary(
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('storeId') storeId?: string,
   ) {
     return this.inventoryService.getInventorySummary(
       page ? Number(page) : 1,
       limit ? Math.min(Number(limit), 500) : 20,
+      storeId,
     );
   }
 

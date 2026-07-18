@@ -40,10 +40,11 @@ export class InventoryService {
     private readonly suppliersRepository: Repository<Supplier>,
   ) {}
 
-  async getInventorySummary(page = 1, limit = 20): Promise<PaginatedResultDto<Record<string, unknown>>> {
+  async getInventorySummary(page = 1, limit = 20, storeId?: string): Promise<PaginatedResultDto<Record<string, unknown>>> {
     const skip = (page - 1) * limit;
 
     const [products, totalItems] = await this.productsRepository.findAndCount({
+      where: storeId ? { storeId } : {},
       order: { createdAt: 'DESC' },
       skip,
       take: limit,

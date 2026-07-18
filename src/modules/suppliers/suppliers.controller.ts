@@ -27,12 +27,15 @@ export class SuppliersController {
     @Query('search') search: string | undefined,
     @Query('page') page: string | undefined,
     @Query('limit') limit: string | undefined,
+    @Query('storeId') storeId: string | undefined,
     @Request() req: { user: { userId: number; role: string } },
   ) {
-    const allowedStoreIds =
-      req.user.role === 'seller'
-        ? await this.getSellerStoreIds(req.user.userId)
-        : undefined;
+    let allowedStoreIds: string[] | undefined;
+    if (req.user.role === 'seller') {
+      allowedStoreIds = await this.getSellerStoreIds(req.user.userId);
+    } else if (storeId) {
+      allowedStoreIds = [storeId];
+    }
     return this.suppliersService.findAll(
       search,
       allowedStoreIds,

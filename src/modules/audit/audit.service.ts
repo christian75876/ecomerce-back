@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AuditLog } from './entities/audit-log.entity';
 import { QueryAuditDto } from './dto/query-audit.dto';
+import { PaginatedResultDto } from '../../common/dtos/paginated-result.dto';
 
 @Injectable()
 export class AuditService {
@@ -29,7 +30,11 @@ export class AuditService {
     return this.auditRepository.save(record);
   }
 
-  async findAll(query: QueryAuditDto) {
+  async findAll(query: QueryAuditDto): Promise<PaginatedResultDto<AuditLog>> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const skip = (page - 1) * limit;
+
     const qb = this.auditRepository.createQueryBuilder('audit');
 
     if (query.action) {
@@ -42,6 +47,23 @@ export class AuditService {
       qb.andWhere('audit.userId = :userId', { userId: Number(query.userId) });
     }
 
-    return qb.orderBy('audit.createdAt', 'DESC').getMany();
+    const [items, totalItems] = await qb
+      .orderBy('audit.createdAt', 'DESC')
+      .skip(skip)
+      .take(limit)
+      .getManyAndCount();
+
+    const totalPages = Math.max(1, Math.ceil(totalItems / limit));
+
+    return {
+      items,
+      pagination: {
+        totalItems,
+        itemCount: items.length,
+        itemsPerPage: limit,
+        totalPages,
+        currentPage: page,
+      },
+    };
   }
 }

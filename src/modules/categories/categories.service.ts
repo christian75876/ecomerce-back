@@ -8,12 +8,15 @@ import { IsNull, Repository } from 'typeorm';
 import { Category } from './entities/category.entity';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
+import { Product } from '../products/entities/product.entity';
 
 @Injectable()
 export class CategoriesService {
   constructor(
     @InjectRepository(Category)
     private readonly categoriesRepository: Repository<Category>,
+    @InjectRepository(Product)
+    private readonly productsRepository: Repository<Product>,
   ) {}
 
   async findAll(active?: boolean, storeId?: string) {
@@ -84,6 +87,15 @@ export class CategoriesService {
       category.isActive = updateCategoryDto.isActive;
     }
 
-    return this.categoriesRepository.save(category);
+    const saved = await this.categoriesRepository.save(category);
+
+    if (updateCategoryDto.isActive === false) {
+      await this.productsRepository.update(
+        { categoryId: id },
+        { isActive: false },
+      );
+    }
+
+    return saved;
   }
 }

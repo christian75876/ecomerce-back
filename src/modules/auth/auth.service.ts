@@ -135,6 +135,20 @@ export class AuthService {
     };
   }
 
+  async renewToken(expiredToken: string): Promise<{ token: string }> {
+    let payload: { sub: number; role_id: number | null; email: string | null };
+    try {
+      payload = await this.jwtService.verifyAsync(expiredToken, { ignoreExpiration: true });
+    } catch {
+      throw new UnauthorizedException('Invalid token');
+    }
+    const user = await this.userRepository.findOne({ where: { id: payload.sub } });
+    if (!user) throw new UnauthorizedException('User not found');
+    const now = Math.floor(Date.now() / 1000);
+    const newPayload = { sub: user.id, iat: now, role_id: payload.role_id, email: user.email };
+    return { token: await this.jwtService.signAsync(newPayload, { expiresIn: '1h' }) };
+  }
+
   async getAuthenticatedProfile(userId: number) {
     const [user, customer] = await Promise.all([
       this.userRepository.findOne({ where: { id: userId }, relations: { role: true } }),

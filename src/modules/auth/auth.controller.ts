@@ -9,6 +9,7 @@ import {
   Body,
   Get,
   UseGuards,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
@@ -68,6 +69,15 @@ export class AuthController {
     @Body() dto: UpdateMyProfileDto,
   ) {
     return await this.authService.updateMyProfile(req.user.userId, dto);
+  }
+
+  @Post('refresh')
+  @HttpCode(200)
+  async refreshToken(@Req() req: Request) {
+    const authHeader = req.headers['authorization'] as string | undefined;
+    const token = authHeader?.split(' ')[1];
+    if (!token) throw new UnauthorizedException('No token provided');
+    return await this.authService.renewToken(token);
   }
 
   @Post('recover-passwords')

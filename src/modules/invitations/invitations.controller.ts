@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { Request } from 'express';
 import { InvitationsService } from './invitations.service';
 import { CreateInvitationDto } from './dto/create-invitation.dto';
@@ -25,6 +25,23 @@ export class InvitationsController {
   @Roles('admin')
   async findAll() {
     return this.invitationsService.findAll();
+  }
+
+  @Post(':id/resend')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  async resend(
+    @Param('id') id: string,
+    @Req() req: Request & { user: { userId: number } },
+  ) {
+    return this.invitationsService.resend(id, req.user.userId);
+  }
+
+  @Delete(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  async remove(@Param('id') id: string) {
+    return this.invitationsService.delete(id);
   }
 
   @Get('validate/:token')

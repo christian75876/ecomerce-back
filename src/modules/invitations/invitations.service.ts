@@ -93,6 +93,25 @@ export class InvitationsService {
     return { valid: true, email: invitation.email };
   }
 
+  async resend(id: string, adminUserId: number) {
+    const invitation = await this.invitationsRepository.findOne({ where: { id } });
+    if (!invitation) throw new NotFoundException('Invitación no encontrada');
+    if (invitation.status === InvitationStatus.ACCEPTED) {
+      throw new BadRequestException('La invitación ya fue aceptada');
+    }
+    return this.create(invitation.email, adminUserId);
+  }
+
+  async delete(id: string): Promise<{ message: string }> {
+    const invitation = await this.invitationsRepository.findOne({ where: { id } });
+    if (!invitation) throw new NotFoundException('Invitación no encontrada');
+    if (invitation.status === InvitationStatus.ACCEPTED) {
+      throw new BadRequestException('No se puede eliminar una invitación ya aceptada');
+    }
+    await this.invitationsRepository.remove(invitation);
+    return { message: 'Invitación eliminada' };
+  }
+
   async markAccepted(token: string): Promise<void> {
     const tokenHash = this.hash(token);
     await this.invitationsRepository.update(

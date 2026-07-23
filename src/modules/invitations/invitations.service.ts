@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { createHash, randomBytes } from 'crypto';
@@ -7,6 +7,7 @@ import { EmailService } from '../auth/email.service';
 
 @Injectable()
 export class InvitationsService {
+  private readonly logger = new Logger(InvitationsService.name);
   private readonly TTL_HOURS = 48;
 
   constructor(
@@ -49,8 +50,12 @@ export class InvitationsService {
     let emailSent = true;
     try {
       await this.emailService.sendInvitationEmail(normalized, token);
-    } catch {
+    } catch (err) {
       emailSent = false;
+      this.logger.error(
+        `[Invitation] Failed to send email to ${normalized}: ${err instanceof Error ? err.message : String(err)}`,
+        err instanceof Error ? err.stack : undefined,
+      );
     }
 
     return {

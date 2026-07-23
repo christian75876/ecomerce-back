@@ -1,83 +1,65 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { EnvConfig } from 'src/common/env.config';
 import * as nodemailer from 'nodemailer';
 
 @Injectable()
 export class EmailService {
+  private readonly logger = new Logger(EmailService.name);
   private readonly envConfig = EnvConfig();
-  private readonly smtpHost = this.envConfig.smtpHost;
-  private readonly smtpPort = this.envConfig.smtpPort;
-  private readonly smtpSecure = this.envConfig.smtpSecure;
-  private readonly smtpUser = this.envConfig.smtpUser;
-  private readonly smtpPass = this.envConfig.smtpPass;
   private readonly fromEmail = this.envConfig.emailFrom;
   private readonly appName = this.envConfig.appName;
   private readonly verifyBaseUrl = this.envConfig.emailVerificationUrlBase;
   private readonly transporter = nodemailer.createTransport({
-    host: this.smtpHost,
-    port: this.smtpPort,
-    secure: this.smtpSecure,
+    host: this.envConfig.smtpHost,
+    port: this.envConfig.smtpPort,
+    secure: this.envConfig.smtpSecure,
     connectionTimeout: 10_000,
     greetingTimeout: 8_000,
     socketTimeout: 15_000,
     auth: {
-      user: this.smtpUser,
-      pass: this.smtpPass,
+      user: this.envConfig.smtpUser,
+      pass: this.envConfig.smtpPass,
     },
   });
 
   private assertEmailConfig(): void {
-    if (!this.smtpUser || !this.smtpPass) {
-      throw new InternalServerErrorException(
-        'Missing SMTP_USER/SMTP_PASS configuration',
-      );
+    if (!this.envConfig.smtpUser || !this.envConfig.smtpPass) {
+      throw new InternalServerErrorException('Missing SMTP_USER/SMTP_PASS configuration');
     }
-
     if (!this.fromEmail) {
-      throw new InternalServerErrorException(
-        'Missing EMAIL_FROM configuration',
-      );
+      throw new InternalServerErrorException('Missing EMAIL_FROM configuration');
     }
   }
 
-  private async sendEmail(
-    to: string,
-    subject: string,
-    html: string,
-    text: string,
-  ): Promise<void> {
+  private async sendEmail(to: string, subject: string, html: string, text: string): Promise<void> {
     this.assertEmailConfig();
+    this.logger.log(`Sending email to ${to} — host: ${this.envConfig.smtpHost}:${this.envConfig.smtpPort} user: ${this.envConfig.smtpUser}`);
     try {
-      await this.transporter.sendMail({
-        from: this.fromEmail || this.smtpUser,
-        to,
-        subject,
-        html,
-        text,
-      });
+      const info = await this.transporter.sendMail({ from: this.fromEmail, to, subject, html, text });
+      this.logger.log(`Email sent — messageId: ${info.messageId}`);
     } catch (error) {
-      const smtpError =
-        error instanceof Error ? error.message : 'Unknown SMTP error';
-      throw new InternalServerErrorException(
-        `SMTP provider error: ${smtpError}`,
-      );
+      const msg = error instanceof Error ? error.message : 'Unknown SMTP error';
+      this.logger.error(`SMTP failed: ${msg}`);
+      throw new InternalServerErrorException(`SMTP error: ${msg}`);
     }
   }
 
   async sendVerificationEmail(to: string, token: string): Promise<void> {
     const verificationUrl = `${this.verifyBaseUrl}${encodeURIComponent(token)}`;
-    const subject = `Verify your email - ${this.appName}`;
-    const text =
-      `Welcome to ${this.appName}. Verify your email with this link: ` +
-      verificationUrl;
+    const subject = `Verifica tu correo — ${this.appName}`;
+    const text = `Bienvenido a ${this.appName}. Verifica tu correo aquí: ${verificationUrl}`;
     const html = `
-      <h2>Verify your email</h2>
-      <p>Welcome to ${this.appName}.</p>
-      <p>Click the following link to verify your account:</p>
-      <p><a href="${verificationUrl}">${verificationUrl}</a></p>
-      <p>If you did not create this account, you can ignore this email.</p>
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
+        <h2 style="color:#6366f1">Verifica tu correo</h2>
+        <p>Bienvenido a <strong>${this.appName}</strong>.</p>
+        <p style="margin:24px 0">
+          <a href="${verificationUrl}" style="background:#6366f1;color:#fff;padding:12px 28px;border-radius:12px;text-decoration:none;font-weight:600;display:inline-block">
+            Verificar correo
+          </a>
+        </p>
+        <p style="color:#64748b;font-size:13px">Si no creaste esta cuenta, ignora este correo.</p>
+      </div>
     `;
-
     await this.sendEmail(to, subject, html, text);
   }
 
@@ -91,8 +73,7 @@ export class EmailService {
         <h2 style="color:#6366f1">¡Fuiste invitado como vendedor!</h2>
         <p>Hola, el administrador de <strong>${this.appName}</strong> te invitó a crear tu propia tienda en el marketplace.</p>
         <p style="margin:24px 0">
-          <a href="${inviteUrl}"
-             style="background:#6366f1;color:#fff;padding:12px 28px;border-radius:12px;text-decoration:none;font-weight:600;display:inline-block">
+          <a href="${inviteUrl}" style="background:#6366f1;color:#fff;padding:12px 28px;border-radius:12px;text-decoration:none;font-weight:600;display:inline-block">
             Aceptar invitación
           </a>
         </p>
@@ -103,18 +84,16 @@ export class EmailService {
   }
 
   async sendRecoveryOtpEmail(to: string, otp: string): Promise<void> {
-    const subject = `Password recovery code - ${this.appName}`;
-    const text =
-      `Your ${this.appName} password recovery code is ${otp}. ` +
-      'It expires in 10 minutes.';
+    const subject = `Código de recuperación — ${this.appName}`;
+    const text = `Tu código de recuperación de ${this.appName} es: ${otp}. Expira en 10 minutos.`;
     const html = `
-      <h2>Password recovery</h2>
-      <p>Your recovery code is:</p>
-      <h1 style="letter-spacing: 4px;">${otp}</h1>
-      <p>This code expires in 10 minutes.</p>
-      <p>If you did not request this code, ignore this email.</p>
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
+        <h2 style="color:#6366f1">Recuperación de contraseña</h2>
+        <p>Tu código es:</p>
+        <h1 style="letter-spacing:8px;color:#1e293b;font-size:40px;margin:16px 0">${otp}</h1>
+        <p style="color:#64748b;font-size:13px">Expira en 10 minutos. Si no solicitaste esto, ignora este correo.</p>
+      </div>
     `;
-
     await this.sendEmail(to, subject, html, text);
   }
 }

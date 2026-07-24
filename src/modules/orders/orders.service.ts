@@ -4,6 +4,7 @@ import { DataSource, EntityManager, Repository } from 'typeorm';
 import { Customer } from '../customers/entities/customer.entity';
 import { Product } from '../products/entities/product.entity';
 import { Store } from '../stores/entities/store.entity';
+import { User } from '../users/entities/user.entity';
 import { InventoryService } from '../inventory/inventory.service';
 import { Order, OrderStatus } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
@@ -12,6 +13,7 @@ import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { InventoryReferenceType } from '../inventory/entities/inventory-batch-allocation.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CouponsService } from '../coupons/coupons.service';
+import { EmailService } from '../auth/email.service';
 
 @Injectable()
 export class OrdersService {
@@ -25,9 +27,12 @@ export class OrdersService {
     private readonly ordersRepository: Repository<Order>,
     @InjectRepository(OrderItem)
     private readonly orderItemsRepository: Repository<OrderItem>,
+    @InjectRepository(User)
+    private readonly usersRepository: Repository<User>,
     private readonly inventoryService: InventoryService,
     private readonly notificationsService: NotificationsService,
     private readonly couponsService: CouponsService,
+    private readonly emailService: EmailService,
   ) {}
 
   async findAll(storeId?: string, page = 1, limit = 20, status?: string, search?: string) {
@@ -237,8 +242,9 @@ export class OrdersService {
       void this.couponsService.incrementUsage(appliedCouponId);
     }
 
-    // Fire-and-forget: notify via SSE + WhatsApp
+    // Fire-and-forget: notify via SSE + WhatsApp + email
     void this.notificationsService.notifyNewOrder(fullOrder, notifyCustomer!, notifyStores);
+    void this.sendOrderEmailsToStores(fullOrder, notifyCustomer!, notifyStores);
 
     return fullOrder;
   }
@@ -276,8 +282,18 @@ export class OrdersService {
     });
 
     if (existingCustomer) {
+      // Link to user account if not yet linked
+      if (!existingCustomer.userId) {
+        const user = await this.usersRepository.findOne({ where: { email: normalizedEmail } });
+        if (user) {
+          existingCustomer.userId = user.id;
+          await customersRepository.save(existingCustomer);
+        }
+      }
       return existingCustomer;
     }
+
+    const user = await this.usersRepository.findOne({ where: { email: normalizedEmail } });
 
     const customer = customersRepository.create({
       firstName: createOrderDto.customer.firstName.trim(),
@@ -285,9 +301,31 @@ export class OrdersService {
       email: normalizedEmail,
       phone: createOrderDto.customer.phone?.trim() || null,
       storeId: storeId ?? null,
+      userId: user?.id ?? null,
     });
 
     return customersRepository.save(customer);
+  }
+
+  private async sendOrderEmailsToStores(order: Order, customer: Customer, stores: Store[]) {
+    const customerName = `${customer.firstName} ${customer.lastName}`.trim();
+    const itemCount = order.items?.length ?? 0;
+
+    for (const store of stores) {
+      if (!store.email) continue;
+      try {
+        await this.emailService.sendNewOrderEmail(store.email, {
+          storeName: store.name,
+          customerName,
+          orderId: order.id,
+          total: Number(order.total),
+          itemCount,
+          deliveryMethod: order.deliveryMethod ?? null,
+        });
+      } catch {
+        // Non-critical: SSE notification already sent
+      }
+    }
   }
 
   async updateStatus(id: string, updateOrderStatusDto: UpdateOrderStatusDto) {

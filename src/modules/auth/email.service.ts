@@ -91,6 +91,36 @@ export class EmailService {
     await this.sendEmail(to, subject, html, text);
   }
 
+  async sendNewOrderEmail(to: string, opts: {
+    storeName: string;
+    customerName: string;
+    orderId: string;
+    total: number;
+    itemCount: number;
+    deliveryMethod: string | null;
+  }): Promise<void> {
+    const { storeName, customerName, orderId, total, itemCount, deliveryMethod } = opts;
+    const subject = `🛍️ Nuevo pedido recibido — ${storeName}`;
+    const deliveryLabel = deliveryMethod === 'DELIVERY' ? 'Domicilio' : 'Recoger en tienda';
+    const totalFormatted = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(total);
+    const html = `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
+        <h2 style="color:#6366f1">Nuevo pedido en ${storeName}</h2>
+        <p>Tienes un nuevo pedido de <strong>${customerName}</strong>.</p>
+        <table style="width:100%;border-collapse:collapse;margin:16px 0">
+          <tr><td style="padding:8px 0;color:#64748b">ID del pedido</td><td style="padding:8px 0;font-weight:600">${orderId.slice(0, 8).toUpperCase()}</td></tr>
+          <tr><td style="padding:8px 0;color:#64748b">Cliente</td><td style="padding:8px 0;font-weight:600">${customerName}</td></tr>
+          <tr><td style="padding:8px 0;color:#64748b">Total</td><td style="padding:8px 0;font-weight:600">${totalFormatted}</td></tr>
+          <tr><td style="padding:8px 0;color:#64748b">Artículos</td><td style="padding:8px 0;font-weight:600">${itemCount}</td></tr>
+          <tr><td style="padding:8px 0;color:#64748b">Entrega</td><td style="padding:8px 0;font-weight:600">${deliveryLabel}</td></tr>
+        </table>
+        <p style="color:#64748b;font-size:13px">Inicia sesión en el panel de administración para gestionar el pedido.</p>
+      </div>
+    `;
+    const text = `Nuevo pedido en ${storeName}. Cliente: ${customerName}. Total: ${totalFormatted}. Artículos: ${itemCount}. Entrega: ${deliveryLabel}.`;
+    await this.sendEmail(to, subject, html, text);
+  }
+
   async sendRecoveryOtpEmail(to: string, otp: string): Promise<void> {
     const subject = `Código de recuperación — ${this.appName}`;
     const text = `Tu código de recuperación de ${this.appName} es: ${otp}. Expira en 10 minutos.`;

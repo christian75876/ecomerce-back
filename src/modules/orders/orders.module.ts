@@ -10,14 +10,17 @@ import { InventoryModule } from '../inventory/inventory.module';
 import { CustomersModule } from '../customers/customers.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { CouponsModule } from '../coupons/coupons.module';
+import { EmailModule } from '../email/email.module';
+import { User } from '../users/entities/user.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Customer, Product, Order, OrderItem]),
+    TypeOrmModule.forFeature([Customer, Product, Order, OrderItem, User]),
     InventoryModule,
     CustomersModule,
     NotificationsModule,
     CouponsModule,
+    EmailModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService],

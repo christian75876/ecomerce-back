@@ -1,6 +1,13 @@
 import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { EnvConfig } from 'src/common/env.config';
-import * as nodemailer from 'nodemailer';
+
+interface BrevoEmailPayload {
+  sender: { email: string; name?: string };
+  to: { email: string }[];
+  subject: string;
+  htmlContent: string;
+  textContent: string;
+}
 
 @Injectable()
 export class EmailService {
@@ -9,39 +16,40 @@ export class EmailService {
   private readonly fromEmail = this.envConfig.emailFrom;
   private readonly appName = this.envConfig.appName;
   private readonly verifyBaseUrl = this.envConfig.emailVerificationUrlBase;
-  private readonly transporter = nodemailer.createTransport({
-    host: this.envConfig.smtpHost,
-    port: this.envConfig.smtpPort,
-    secure: this.envConfig.smtpSecure,
-    connectionTimeout: 10_000,
-    greetingTimeout: 8_000,
-    socketTimeout: 15_000,
-    auth: {
-      user: this.envConfig.smtpUser,
-      pass: this.envConfig.smtpPass,
-    },
-  });
-
-  private assertEmailConfig(): void {
-    if (!this.envConfig.smtpUser || !this.envConfig.smtpPass) {
-      throw new InternalServerErrorException('Missing SMTP_USER/SMTP_PASS configuration');
-    }
-    if (!this.fromEmail) {
-      throw new InternalServerErrorException('Missing EMAIL_FROM configuration');
-    }
-  }
 
   private async sendEmail(to: string, subject: string, html: string, text: string): Promise<void> {
-    this.assertEmailConfig();
-    this.logger.log(`Sending email to ${to} — host: ${this.envConfig.smtpHost}:${this.envConfig.smtpPort} user: ${this.envConfig.smtpUser}`);
-    try {
-      const info = await this.transporter.sendMail({ from: this.fromEmail, to, subject, html, text });
-      this.logger.log(`Email sent — messageId: ${info.messageId}`);
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Unknown SMTP error';
-      this.logger.error(`SMTP failed: ${msg}`);
-      throw new InternalServerErrorException(`SMTP error: ${msg}`);
+    const apiKey = this.envConfig.brevoApiKey;
+    if (!apiKey) throw new InternalServerErrorException('Missing BREVO_API_KEY configuration');
+    if (!this.fromEmail) throw new InternalServerErrorException('Missing EMAIL_FROM configuration');
+
+    this.logger.log(`Sending email to ${to} via Brevo API`);
+
+    const payload: BrevoEmailPayload = {
+      sender: { email: this.fromEmail, name: this.appName },
+      to: [{ email: to }],
+      subject,
+      htmlContent: html,
+      textContent: text,
+    };
+
+    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'api-key': apiKey,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const body = await res.text();
+      this.logger.error(`Brevo API error ${res.status}: ${body}`);
+      throw new InternalServerErrorException(`Brevo error ${res.status}: ${body}`);
     }
+
+    const data = await res.json() as { messageId?: string };
+    this.logger.log(`Email sent — messageId: ${data.messageId ?? 'ok'}`);
   }
 
   async sendVerificationEmail(to: string, token: string): Promise<void> {

@@ -287,6 +287,8 @@ export class AuthService {
       throw new NotFoundException('Role not configured');
     }
 
+    let verificationToken: string | null = null;
+
     const { user, customer } =
       await this.userRepository.manager.transaction(async (em) => {
         const hashedPass = await bcrypt.hash(password, bcrypt.genSaltSync(10));
@@ -294,14 +296,28 @@ export class AuthService {
           role_id: assignedRole.id,
           email: normalizedEmail,
           password: hashedPass,
-          isEmailVerified: true,
+          isEmailVerified: isInvited,
         });
         await em.save(user);
+
+        if (!isInvited) {
+          verificationToken = this.generateVerificationToken();
+          await this.deactivateActiveTokens(normalizedEmail, 'register_verification');
+          const emailToken = this.recoverTokenRepository.create({
+            email: normalizedEmail,
+            tokenHash: this.hashValue(verificationToken),
+            purpose: 'register_verification',
+            expiresAt: this.getTokenExpiry(this.verificationTtlHours * 60),
+            attempts: 0,
+            isActive: true,
+          });
+          await em.save(emailToken);
+        }
 
         const [firstName, ...restName] = name.trim().split(/\s+/);
         const customer = em.create(Customer, {
           firstName,
-          lastName: restName.join(' ') || 'Vendedor',
+          lastName: restName.join(' ') || '',
           email: normalizedEmail,
           phone: phone?.trim() || null,
           userId: user.id,
@@ -325,31 +341,37 @@ export class AuthService {
       } catch {
         // Non-critical: store can be created later by admin
       }
+
+      const now = Math.floor(Date.now() / 1000);
+      const jwtPayload = { sub: user.id, iat: now, role_id: assignedRole.id, email: user.email };
+      return {
+        message: 'Vendedor registrado correctamente',
+        token: await this.jwtService.signAsync(jwtPayload, { expiresIn: '1h' }),
+        user: { id: user.id, email: user.email, role_id: user.role_id, role: assignedRole.name },
+        customer: { id: customer.id, firstName: customer.firstName, lastName: customer.lastName, phone: customer.phone },
+      };
     }
 
-    const now = Math.floor(Date.now() / 1000);
-    const payload = {
-      sub: user.id,
-      iat: now,
-      role_id: assignedRole.id,
-      email: user.email,
-    };
+    // Regular buyer — send verification email
+    let emailSent = true;
+    try {
+      await this.emailService.sendVerificationEmail(normalizedEmail, verificationToken!);
+    } catch (error) {
+      emailSent = false;
+      this.logger.error(
+        `Could not send verification email to ${normalizedEmail}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
 
     return {
-      message: isInvited ? 'Vendedor registrado correctamente' : 'Cliente registrado correctamente',
-      token: await this.jwtService.signAsync(payload, { expiresIn: '1h' }),
-      user: {
-        id: user.id,
-        email: user.email,
-        role_id: user.role_id,
-        role: assignedRole.name,
-      },
-      customer: {
-        id: customer.id,
-        firstName: customer.firstName,
-        lastName: customer.lastName,
-        phone: customer.phone,
-      },
+      message: emailSent
+        ? 'Cuenta creada. Revisa tu correo para verificar tu cuenta antes de ingresar.'
+        : 'Cuenta creada, pero no se pudo enviar el correo de verificación. Contacta al soporte.',
+      email_delivery: emailSent ? 'sent' : 'failed',
+      ...(process.env.NODE_ENV !== 'production' && !emailSent
+        ? { verification_token: verificationToken }
+        : {}),
     };
   }
 

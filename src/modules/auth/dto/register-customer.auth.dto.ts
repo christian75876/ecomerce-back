@@ -26,11 +26,11 @@ export class RegisterCustomerDto {
   @IsNotEmpty()
   password: string;
 
-  @ApiPropertyOptional({ example: '3001234567' })
-  @IsOptional()
+  @ApiProperty({ example: '3001234567' })
   @IsString()
+  @IsNotEmpty()
   @MaxLength(30)
-  phone?: string;
+  phone: string;
 
   @ApiPropertyOptional()
   @IsOptional()

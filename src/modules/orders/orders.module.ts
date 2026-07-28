@@ -11,11 +11,10 @@ import { CustomersModule } from '../customers/customers.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { CouponsModule } from '../coupons/coupons.module';
 import { EmailModule } from '../email/email.module';
-import { User } from '../users/entities/user.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Customer, Product, Order, OrderItem, User]),
+    TypeOrmModule.forFeature([Customer, Product, Order, OrderItem]),
     InventoryModule,
     CustomersModule,
     NotificationsModule,

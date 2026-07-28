@@ -4,7 +4,6 @@ import { DataSource, EntityManager, Repository } from 'typeorm';
 import { Customer } from '../customers/entities/customer.entity';
 import { Product } from '../products/entities/product.entity';
 import { Store } from '../stores/entities/store.entity';
-import { User } from '../users/entities/user.entity';
 import { InventoryService } from '../inventory/inventory.service';
 import { Order, OrderStatus } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
@@ -27,8 +26,6 @@ export class OrdersService {
     private readonly ordersRepository: Repository<Order>,
     @InjectRepository(OrderItem)
     private readonly orderItemsRepository: Repository<OrderItem>,
-    @InjectRepository(User)
-    private readonly usersRepository: Repository<User>,
     private readonly inventoryService: InventoryService,
     private readonly notificationsService: NotificationsService,
     private readonly couponsService: CouponsService,
@@ -282,18 +279,8 @@ export class OrdersService {
     });
 
     if (existingCustomer) {
-      // Link to user account if not yet linked
-      if (!existingCustomer.userId) {
-        const user = await this.usersRepository.findOne({ where: { email: normalizedEmail } });
-        if (user) {
-          existingCustomer.userId = user.id;
-          await customersRepository.save(existingCustomer);
-        }
-      }
       return existingCustomer;
     }
-
-    const user = await this.usersRepository.findOne({ where: { email: normalizedEmail } });
 
     const customer = customersRepository.create({
       firstName: createOrderDto.customer.firstName.trim(),
@@ -301,7 +288,6 @@ export class OrdersService {
       email: normalizedEmail,
       phone: createOrderDto.customer.phone?.trim() || null,
       storeId: storeId ?? null,
-      userId: user?.id ?? null,
     });
 
     return customersRepository.save(customer);

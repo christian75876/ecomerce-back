@@ -16,6 +16,16 @@ export interface NewOrderPayload {
   createdAt: string;
 }
 
+export interface OrderStatusPayload {
+  type: 'order_status_update';
+  orderId: string;
+  status: string;
+  statusLabel: string;
+  statusEmoji: string;
+  storeName: string;
+  updatedAt: string;
+}
+
 @Injectable()
 export class NotificationsService {
   private readonly streams = new Map<number, Subject<MessageEvent>>();
@@ -37,6 +47,13 @@ export class NotificationsService {
     }
   }
 
+  notifyUser(userId: number, payload: OrderStatusPayload): void {
+    const subject = this.streams.get(userId);
+    if (subject) {
+      subject.next({ data: payload });
+    }
+  }
+
   async notifyNewOrder(order: Order, customer: Customer, stores: Store[]) {
     const customerName = `${customer.firstName} ${customer.lastName}`.trim();
     const itemCount = order.items?.length ?? 0;
@@ -51,7 +68,7 @@ export class NotificationsService {
       createdAt: new Date().toISOString(),
     };
 
-    // SSE — broadcast to all connected admin/seller sessions
+    // SSE — broadcast to all connected sessions (admins/sellers)
     const event: MessageEvent = { data: payload };
     this.streams.forEach((subject) => subject.next(event));
 

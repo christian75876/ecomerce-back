@@ -11,6 +11,7 @@ import { CustomersModule } from '../customers/customers.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { CouponsModule } from '../coupons/coupons.module';
 import { EmailModule } from '../email/email.module';
+import { PushModule } from '../push/push.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { EmailModule } from '../email/email.module';
     NotificationsModule,
     CouponsModule,
     EmailModule,
+    PushModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService],

@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { Customer } from '../customers/entities/customer.entity';
 import { Product } from '../products/entities/product.entity';
 import { Store } from '../stores/entities/store.entity';
@@ -13,6 +13,7 @@ import { InventoryReferenceType } from '../inventory/entities/inventory-batch-al
 import { NotificationsService } from '../notifications/notifications.service';
 import { CouponsService } from '../coupons/coupons.service';
 import { EmailService } from '../auth/email.service';
+import { PushService } from '../push/push.service';
 
 @Injectable()
 export class OrdersService {
@@ -30,6 +31,7 @@ export class OrdersService {
     private readonly notificationsService: NotificationsService,
     private readonly couponsService: CouponsService,
     private readonly emailService: EmailService,
+    private readonly pushService: PushService,
   ) {}
 
   async findAll(storeId?: string, page = 1, limit = 20, status?: string, search?: string) {
@@ -86,14 +88,25 @@ export class OrdersService {
       return [];
     }
 
+    // Include orders from orphan customers with same email (created before login)
+    const allCustomers = await this.customersRepository.find({
+      where: { email: customer.email },
+      select: ['id'],
+    });
+    const customerIds = allCustomers.map((c) => c.id);
+
     return this.ordersRepository.find({
-      where: { customerId: customer.id },
+      where: { customerId: In(customerIds) },
+      relations: { items: { product: true } },
       order: { createdAt: 'DESC' },
     });
   }
 
   async findOne(id: string) {
-    const order = await this.ordersRepository.findOne({ where: { id } });
+    const order = await this.ordersRepository.findOne({
+      where: { id },
+      relations: { items: { product: true } },
+    });
     if (!order) {
       throw new NotFoundException('Order not found');
     }
@@ -106,18 +119,22 @@ export class OrdersService {
     });
 
     if (!customer) {
-      throw new NotFoundException('Order not found');
+      throw new NotFoundException('Pedido no encontrado');
     }
 
+    const allCustomers = await this.customersRepository.find({
+      where: { email: customer.email },
+      select: ['id'],
+    });
+    const customerIds = allCustomers.map((c) => c.id);
+
     const order = await this.ordersRepository.findOne({
-      where: {
-        id,
-        customerId: customer.id,
-      },
+      where: { id, customerId: In(customerIds) },
+      relations: { items: { product: true } },
     });
 
     if (!order) {
-      throw new NotFoundException('Order not found');
+      throw new NotFoundException('Pedido no encontrado');
     }
 
     return order;
@@ -138,6 +155,7 @@ export class OrdersService {
       for (const item of createOrderDto.items) {
         const product = await productsRepository.findOne({
           where: { id: item.productId, isActive: true },
+          relations: { store: true },
         });
 
         if (!product) {
@@ -239,9 +257,15 @@ export class OrdersService {
       void this.couponsService.incrementUsage(appliedCouponId);
     }
 
-    // Fire-and-forget: notify via SSE + WhatsApp + email
+    // Fire-and-forget: notify via SSE + WhatsApp + email + Web Push
     void this.notificationsService.notifyNewOrder(fullOrder, notifyCustomer!, notifyStores);
     void this.sendOrderEmailsToStores(fullOrder, notifyCustomer!, notifyStores);
+    void this.pushService.sendToAll({
+      title: '🛍️ Nuevo pedido',
+      body: `${notifyCustomer!.firstName} ${notifyCustomer!.lastName} — $${Number(fullOrder.total).toLocaleString('es-CO')}`,
+      url: '/private/orders',
+      tag: `order-new-${fullOrder.id}`,
+    });
 
     return fullOrder;
   }
@@ -255,9 +279,7 @@ export class OrdersService {
 
     if (createOrderDto.customerId) {
       const customer = await customersRepository.findOne({
-        where: storeId
-          ? { id: createOrderDto.customerId, storeId }
-          : { id: createOrderDto.customerId },
+        where: { id: createOrderDto.customerId },
       });
 
       if (!customer) {
@@ -331,7 +353,76 @@ export class OrdersService {
     }
 
     order.status = updateOrderStatusDto.status;
-    return this.ordersRepository.save(order);
+    const saved = await this.ordersRepository.save(order);
+
+    void this.notifyCustomerStatusChange(saved);
+
+    return saved;
+  }
+
+  private async notifyCustomerStatusChange(order: Order): Promise<void> {
+    const STATUS_META: Record<string, { label: string; emoji: string; color: string }> = {
+      PENDING:   { label: 'Pendiente',        emoji: '⏳', color: '#94a3b8' },
+      PAID:      { label: 'Pagado',            emoji: '✅', color: '#22c55e' },
+      PREPARING: { label: 'En preparación',   emoji: '🔧', color: '#3b82f6' },
+      SHIPPED:   { label: 'Enviado',           emoji: '🚚', color: '#8b5cf6' },
+      DELIVERED: { label: 'Entregado',         emoji: '📦', color: '#16a34a' },
+      CANCELLED: { label: 'Cancelado',         emoji: '❌', color: '#ef4444' },
+    };
+
+    try {
+      const customer = await this.customersRepository.findOne({
+        where: { id: order.customerId },
+      });
+      if (!customer?.email) return;
+
+      const meta = STATUS_META[order.status] ?? { label: order.status, emoji: '📋', color: '#6366f1' };
+
+      const storeNameResult = await this.ordersRepository.query<{ store_name: string }[]>(
+        `SELECT DISTINCT s.name AS store_name
+         FROM order_items oi
+         JOIN products p ON oi.product_id = p.id
+         JOIN stores s ON p.store_id = s.id
+         WHERE oi.order_id = $1
+         LIMIT 1`,
+        [order.id],
+      );
+      const storeName = storeNameResult?.[0]?.store_name ?? 'la tienda';
+
+      await this.emailService.sendOrderStatusEmail(customer.email, {
+        customerName: `${customer.firstName} ${customer.lastName}`.trim(),
+        orderId: order.id,
+        status: order.status,
+        statusLabel: meta.label,
+        statusColor: meta.color,
+        statusEmoji: meta.emoji,
+        total: Number(order.total),
+        storeName,
+      });
+
+      // SSE + Web Push to buyer (if they are connected / have a push subscription)
+      if (customer.userId) {
+        this.notificationsService.notifyUser(customer.userId, {
+          type: 'order_status_update',
+          orderId: order.id,
+          status: order.status,
+          statusLabel: meta.label,
+          statusEmoji: meta.emoji,
+          storeName,
+          updatedAt: new Date().toISOString(),
+        });
+
+        void this.pushService.sendToUser(customer.userId, {
+          title: `${meta.emoji} Pedido ${meta.label.toLowerCase()}`,
+          body: `Tu pedido en ${storeName} está ${meta.label.toLowerCase()}`,
+          url: '/my-orders',
+          tag: `order-status-${order.id}`,
+        });
+      }
+    } catch (err) {
+      // Fire-and-forget: log but don't break the response
+      console.error(`[OrdersService] Could not send status email for order ${order.id}:`, err);
+    }
   }
 
   private validateTransition(currentStatus: OrderStatus, nextStatus: OrderStatus) {

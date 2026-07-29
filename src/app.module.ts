@@ -26,6 +26,7 @@ import { CouponsModule } from './modules/coupons/coupons.module';
 import { AppConfigModule } from './modules/app-config/app-config.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { AdvertisingModule } from './modules/advertising/advertising.module';
+import { PushModule } from './modules/push/push.module';
 
 @Module({
   imports: [
@@ -56,6 +57,7 @@ import { AdvertisingModule } from './modules/advertising/advertising.module';
     AppConfigModule,
     SubscriptionsModule,
     AdvertisingModule,
+    PushModule,
   ],
   providers: [
     AppInitializer,

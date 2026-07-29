@@ -9,11 +9,17 @@ import {
 } from 'class-validator';
 
 export class RegisterCustomerDto {
-  @ApiProperty({ example: 'Christian Pabon' })
+  @ApiProperty({ example: 'Christian' })
   @IsString()
   @IsNotEmpty()
-  @MaxLength(120)
-  name: string;
+  @MaxLength(60)
+  firstName: string;
+
+  @ApiProperty({ example: 'Pabón' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(60)
+  lastName: string;
 
   @ApiProperty({ example: 'buyer@example.com' })
   @IsEmail()

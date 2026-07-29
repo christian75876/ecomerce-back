@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
   UnauthorizedException,
@@ -81,7 +82,7 @@ export class AuthService {
       where: { email: normalizedEmail },
     });
     if (user) {
-      throw new BadRequestException('The email has already been used');
+      throw new BadRequestException('El correo ya está registrado.');
     }
     return normalizedEmail;
   }
@@ -95,16 +96,16 @@ export class AuthService {
       where: { email: normalizedEmail },
     });
     if (!userData) {
-      throw new NotFoundException('The email does not exist.');
+      throw new UnauthorizedException('Correo o contraseña incorrectos.');
     }
     if (!userData.isEmailVerified) {
-      throw new ForbiddenException('You must verify your email before login');
+      throw new ForbiddenException('Debes verificar tu correo antes de ingresar.');
     }
     const result = await bcrypt.compare(password, userData.password);
     if (userData.email && result) {
       return userData;
     }
-    throw new UnauthorizedException('Your email or password are incorrect.');
+    throw new UnauthorizedException('Correo o contraseña incorrectos.');
   }
 
   async login({ email, password }: LoginAuthDto) {
@@ -116,6 +117,11 @@ export class AuthService {
             relations: { role: true },
           })
         : null;
+
+    const customer = user
+      ? await this.customerRepository.findOne({ where: { userId: user.id } })
+      : null;
+
     const now = Math.floor(Date.now() / 1000);
     const payload = {
       sub: user?.id ?? null,
@@ -131,6 +137,9 @@ export class AuthService {
         email: user?.email ?? null,
         role_id: user?.role_id ?? null,
         role: user?.role?.name ?? null,
+        customer: customer
+          ? { id: customer.id, firstName: customer.firstName, lastName: customer.lastName, phone: customer.phone }
+          : null,
       },
     };
   }
@@ -140,10 +149,10 @@ export class AuthService {
     try {
       payload = await this.jwtService.verifyAsync(expiredToken, { ignoreExpiration: true });
     } catch {
-      throw new UnauthorizedException('Invalid token');
+      throw new UnauthorizedException('Token inválido.');
     }
     const user = await this.userRepository.findOne({ where: { id: payload.sub } });
-    if (!user) throw new UnauthorizedException('User not found');
+    if (!user) throw new UnauthorizedException('Usuario no encontrado.');
     const now = Math.floor(Date.now() / 1000);
     const newPayload = { sub: user.id, iat: now, role_id: payload.role_id, email: user.email };
     return { token: await this.jwtService.signAsync(newPayload, { expiresIn: '1h' }) };
@@ -156,7 +165,7 @@ export class AuthService {
     ]);
 
     if (!user) {
-      throw new NotFoundException('Authenticated user not found');
+      throw new NotFoundException('Usuario autenticado no encontrado.');
     }
 
     return {
@@ -260,7 +269,8 @@ export class AuthService {
   }
 
   async registerCustomer({
-    name,
+    firstName,
+    lastName,
     email,
     password,
     phone,
@@ -284,7 +294,7 @@ export class AuthService {
     }
 
     if (!assignedRole) {
-      throw new NotFoundException('Role not configured');
+      throw new NotFoundException('Rol no configurado.');
     }
 
     let verificationToken: string | null = null;
@@ -314,10 +324,9 @@ export class AuthService {
           await em.save(emailToken);
         }
 
-        const [firstName, ...restName] = name.trim().split(/\s+/);
         const customer = em.create(Customer, {
-          firstName,
-          lastName: restName.join(' ') || '',
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
           email: normalizedEmail,
           phone: phone?.trim() || null,
           userId: user.id,
@@ -331,13 +340,14 @@ export class AuthService {
       await this.invitationsService.markAccepted(inviteToken);
       // Auto-create store for new seller
       try {
-        const baseSlug = name.trim().toLowerCase()
+        const fullName = `${customer.firstName} ${customer.lastName}`.trim();
+        const baseSlug = fullName.toLowerCase()
           .replace(/\s+/g, '-')
           .replace(/[^a-z0-9-]/g, '')
           .replace(/-+/g, '-')
           .slice(0, 40);
         const slug = `${baseSlug}-${user.id}`;
-        await this.storesService.create({ name: name.trim(), slug, userId: user.id });
+        await this.storesService.create({ name: fullName, slug, userId: user.id });
       } catch {
         // Non-critical: store can be created later by admin
       }
@@ -352,26 +362,44 @@ export class AuthService {
       };
     }
 
-    // Regular buyer — send verification email
-    let emailSent = true;
+    // Regular buyer — send verification email; rollback registration if it fails
     try {
       await this.emailService.sendVerificationEmail(normalizedEmail, verificationToken!);
     } catch (error) {
-      emailSent = false;
       this.logger.error(
         `Could not send verification email to ${normalizedEmail}`,
         error instanceof Error ? error.stack : String(error),
       );
+
+      // In development: auto-verify the user so testing doesn't require email
+      if (process.env.NODE_ENV !== 'production') {
+        this.logger.warn(`[DEV] Auto-verifying ${normalizedEmail} because email service failed.`);
+        user.isEmailVerified = true;
+        await this.userRepository.save(user);
+        const now = Math.floor(Date.now() / 1000);
+        const jwtPayload = { sub: user.id, iat: now, role_id: assignedRole.id, email: user.email };
+        return {
+          message: '[DEV] Correo no enviado — cuenta auto-verificada para pruebas.',
+          email_delivery: 'failed',
+          token: await this.jwtService.signAsync(jwtPayload, { expiresIn: '1h' }),
+          user: { id: user.id, email: user.email, role_id: user.role_id, role: assignedRole.name },
+          customer: { id: customer.id, firstName: customer.firstName, lastName: customer.lastName, phone: customer.phone },
+        };
+      }
+
+      await this.userRepository.manager.transaction(async (em) => {
+        await em.delete(Customer, { userId: user.id });
+        await em.delete(RecoverToken, { email: normalizedEmail, purpose: 'register_verification' });
+        await em.delete(User, { id: user.id });
+      });
+      throw new InternalServerErrorException(
+        'No se pudo enviar el correo de verificación. Por favor intenta de nuevo en unos momentos.',
+      );
     }
 
     return {
-      message: emailSent
-        ? 'Cuenta creada. Revisa tu correo para verificar tu cuenta antes de ingresar.'
-        : 'Cuenta creada, pero no se pudo enviar el correo de verificación. Contacta al soporte.',
-      email_delivery: emailSent ? 'sent' : 'failed',
-      ...(process.env.NODE_ENV !== 'production' && !emailSent
-        ? { verification_token: verificationToken }
-        : {}),
+      message: 'Cuenta creada. Revisa tu correo para verificar tu cuenta antes de ingresar.',
+      email_delivery: 'sent',
     };
   }
 
@@ -403,20 +431,20 @@ export class AuthService {
         }
       }
 
-      throw new BadRequestException('Invalid verification token');
+      throw new BadRequestException('Token de verificación inválido.');
     }
 
     if (verificationToken.expiresAt.getTime() < Date.now()) {
       verificationToken.isActive = false;
       await this.recoverTokenRepository.save(verificationToken);
-      throw new BadRequestException('Verification token has expired');
+      throw new BadRequestException('El enlace de verificación ha expirado.');
     }
 
     const user = await this.userRepository.findOne({
       where: { email: verificationToken.email },
     });
     if (!user) {
-      throw new NotFoundException('User not found for this token');
+      throw new NotFoundException('Usuario no encontrado para este token.');
     }
 
     user.isEmailVerified = true;
@@ -489,19 +517,19 @@ export class AuthService {
     });
 
     if (!recoveryToken) {
-      throw new BadRequestException('Invalid or expired OTP');
+      throw new BadRequestException('Código OTP inválido o expirado.');
     }
 
     if (recoveryToken.expiresAt.getTime() < Date.now()) {
       recoveryToken.isActive = false;
       await this.recoverTokenRepository.save(recoveryToken);
-      throw new BadRequestException('OTP has expired');
+      throw new BadRequestException('El código OTP ha expirado.');
     }
 
     if (recoveryToken.attempts >= this.maxOtpAttempts) {
       recoveryToken.isActive = false;
       await this.recoverTokenRepository.save(recoveryToken);
-      throw new BadRequestException('OTP attempts exceeded. Request a new OTP');
+      throw new BadRequestException('Demasiados intentos. Solicita un nuevo código.');
     }
 
     if (recoveryToken.tokenHash !== this.hashValue(code)) {
@@ -510,7 +538,7 @@ export class AuthService {
         recoveryToken.isActive = false;
       }
       await this.recoverTokenRepository.save(recoveryToken);
-      throw new BadRequestException('Invalid OTP');
+      throw new BadRequestException('Código OTP incorrecto.');
     }
 
     return recoveryToken;
@@ -529,7 +557,7 @@ export class AuthService {
     });
 
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Usuario no encontrado.');
     }
 
     user.password = await bcrypt.hash(newPassword, bcrypt.genSaltSync(10));

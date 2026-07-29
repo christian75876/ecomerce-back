@@ -121,6 +121,44 @@ export class EmailService {
     await this.sendEmail(to, subject, html, text);
   }
 
+  async sendOrderStatusEmail(to: string, opts: {
+    customerName: string;
+    orderId: string;
+    status: string;
+    statusLabel: string;
+    statusColor: string;
+    statusEmoji: string;
+    total: number;
+    storeName: string;
+  }): Promise<void> {
+    const { customerName, orderId, statusLabel, statusColor, statusEmoji, total, storeName } = opts;
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const orderUrl = `${frontendUrl}/my-orders/${orderId}`;
+    const totalFormatted = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(total);
+    const subject = `${statusEmoji} Tu pedido ha sido actualizado — ${this.appName}`;
+    const html = `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
+        <h2 style="color:#6366f1">Actualización de tu pedido</h2>
+        <p>Hola <strong>${customerName}</strong>, tu pedido en <strong>${storeName}</strong> ha cambiado de estado.</p>
+        <div style="background:${statusColor}15;border-left:4px solid ${statusColor};padding:12px 16px;border-radius:8px;margin:20px 0">
+          <p style="margin:0;font-size:18px;font-weight:700;color:${statusColor}">${statusEmoji} ${statusLabel}</p>
+        </div>
+        <table style="width:100%;border-collapse:collapse;margin:16px 0">
+          <tr><td style="padding:8px 0;color:#64748b">ID del pedido</td><td style="padding:8px 0;font-weight:600">${orderId.slice(0, 8).toUpperCase()}</td></tr>
+          <tr><td style="padding:8px 0;color:#64748b">Total</td><td style="padding:8px 0;font-weight:600">${totalFormatted}</td></tr>
+        </table>
+        <p style="margin:24px 0">
+          <a href="${orderUrl}" style="background:#6366f1;color:#fff;padding:12px 28px;border-radius:12px;text-decoration:none;font-weight:600;display:inline-block">
+            Ver mi pedido
+          </a>
+        </p>
+        <p style="color:#64748b;font-size:13px">Si tienes dudas, contáctanos respondiendo este correo.</p>
+      </div>
+    `;
+    const text = `Hola ${customerName}, tu pedido ${orderId.slice(0, 8).toUpperCase()} en ${storeName} ahora está: ${statusLabel}. Total: ${totalFormatted}. Ver pedido: ${orderUrl}`;
+    await this.sendEmail(to, subject, html, text);
+  }
+
   async sendRecoveryOtpEmail(to: string, otp: string): Promise<void> {
     const subject = `Código de recuperación — ${this.appName}`;
     const text = `Tu código de recuperación de ${this.appName} es: ${otp}. Expira en 10 minutos.`;

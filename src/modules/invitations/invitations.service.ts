@@ -1,9 +1,10 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { createHash, randomBytes } from 'crypto';
 import { InvitationStatus, StoreInvitation } from './entities/store-invitation.entity';
 import { EmailService } from '../auth/email.service';
+import { User } from '../users/entities/user.entity';
 
 @Injectable()
 export class InvitationsService {
@@ -13,6 +14,8 @@ export class InvitationsService {
   constructor(
     @InjectRepository(StoreInvitation)
     private readonly invitationsRepository: Repository<StoreInvitation>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
     private readonly emailService: EmailService,
   ) {}
 
@@ -24,8 +27,22 @@ export class InvitationsService {
     return new Date(Date.now() + this.TTL_HOURS * 60 * 60 * 1000);
   }
 
+  private async assertNotAlreadyRegistered(email: string): Promise<void> {
+    const existing = await this.userRepository.findOne({
+      where: { email, isEmailVerified: true },
+      select: ['id'],
+    });
+    if (existing) {
+      throw new BadRequestException(
+        'Este correo ya corresponde a un usuario registrado y verificado en la plataforma',
+      );
+    }
+  }
+
   async create(email: string, adminUserId: number) {
     const normalized = email.trim().toLowerCase();
+
+    await this.assertNotAlreadyRegistered(normalized);
 
     // Expire any pending invitation for this email
     await this.invitationsRepository.update(
@@ -69,9 +86,36 @@ export class InvitationsService {
   }
 
   async findAll() {
-    return this.invitationsRepository.find({
+    const invitations = await this.invitationsRepository.find({
       order: { createdAt: 'DESC' },
     });
+
+    // Auto-sync: mark PENDING invitations as ACCEPTED when the invited
+    // email already has a registered+verified user (e.g. registered directly)
+    const pending = invitations.filter((inv) => inv.status === InvitationStatus.PENDING);
+    if (pending.length > 0) {
+      const pendingEmails = pending.map((inv) => inv.email);
+      const verifiedUsers = await this.userRepository.find({
+        where: { email: In(pendingEmails), isEmailVerified: true },
+        select: ['email'],
+      });
+      const verifiedEmailSet = new Set(verifiedUsers.map((u) => u.email));
+
+      const toSync = pending.filter((inv) => verifiedEmailSet.has(inv.email));
+      if (toSync.length > 0) {
+        const now = new Date();
+        await this.invitationsRepository.update(
+          { id: In(toSync.map((inv) => inv.id)) },
+          { status: InvitationStatus.ACCEPTED, acceptedAt: now },
+        );
+        toSync.forEach((inv) => {
+          inv.status = InvitationStatus.ACCEPTED;
+          inv.acceptedAt = now;
+        });
+      }
+    }
+
+    return invitations;
   }
 
   async validateToken(token: string) {

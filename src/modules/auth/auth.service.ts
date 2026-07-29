@@ -25,6 +25,7 @@ import { ResetPasswordDto } from './dto/resetPassword.auth.dto';
 import { EmailService } from './email.service';
 import { InvitationsService } from '../invitations/invitations.service';
 import { StoresService } from '../stores/stores.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class AuthService {
@@ -44,6 +45,7 @@ export class AuthService {
     private readonly emailService: EmailService,
     private readonly invitationsService: InvitationsService,
     private readonly storesService: StoresService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   private normalizeEmail(email: string): string {
@@ -339,18 +341,29 @@ export class AuthService {
     if (isInvited && inviteToken) {
       await this.invitationsService.markAccepted(inviteToken);
       // Auto-create store for new seller
+      let newStoreName = `${customer.firstName} ${customer.lastName}`.trim();
       try {
-        const fullName = `${customer.firstName} ${customer.lastName}`.trim();
-        const baseSlug = fullName.toLowerCase()
+        const baseSlug = newStoreName.toLowerCase()
           .replace(/\s+/g, '-')
           .replace(/[^a-z0-9-]/g, '')
           .replace(/-+/g, '-')
           .slice(0, 40);
         const slug = `${baseSlug}-${user.id}`;
-        await this.storesService.create({ name: fullName, slug, userId: user.id });
+        const store = await this.storesService.create({ name: newStoreName, slug, userId: user.id });
+        newStoreName = store.name ?? newStoreName;
       } catch {
         // Non-critical: store can be created later by admin
       }
+
+      this.notificationsService.notifyAdmins({
+        type: 'invitation_accepted',
+        userId: user.id,
+        firstName: customer.firstName,
+        lastName: customer.lastName,
+        email: customer.email,
+        storeName: newStoreName,
+        createdAt: new Date().toISOString(),
+      });
 
       const now = Math.floor(Date.now() / 1000);
       const jwtPayload = { sub: user.id, iat: now, role_id: assignedRole.id, email: user.email };
@@ -376,6 +389,14 @@ export class AuthService {
         this.logger.warn(`[DEV] Auto-verifying ${normalizedEmail} because email service failed.`);
         user.isEmailVerified = true;
         await this.userRepository.save(user);
+        this.notificationsService.notifyAdmins({
+          type: 'user_registered',
+          userId: user.id,
+          firstName: customer.firstName,
+          lastName: customer.lastName,
+          email: customer.email,
+          createdAt: new Date().toISOString(),
+        });
         const now = Math.floor(Date.now() / 1000);
         const jwtPayload = { sub: user.id, iat: now, role_id: assignedRole.id, email: user.email };
         return {
@@ -396,6 +417,15 @@ export class AuthService {
         'No se pudo enviar el correo de verificación. Por favor intenta de nuevo en unos momentos.',
       );
     }
+
+    this.notificationsService.notifyAdmins({
+      type: 'user_registered',
+      userId: user.id,
+      firstName: customer.firstName,
+      lastName: customer.lastName,
+      email: customer.email,
+      createdAt: new Date().toISOString(),
+    });
 
     return {
       message: 'Cuenta creada. Revisa tu correo para verificar tu cuenta antes de ingresar.',

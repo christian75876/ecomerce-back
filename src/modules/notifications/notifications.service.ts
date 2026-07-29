@@ -26,32 +26,58 @@ export interface OrderStatusPayload {
   updatedAt: string;
 }
 
+export interface UserRegisteredPayload {
+  type: 'user_registered';
+  userId: number;
+  firstName: string;
+  lastName: string;
+  email: string;
+  createdAt: string;
+}
+
+export interface InvitationAcceptedPayload {
+  type: 'invitation_accepted';
+  userId: number;
+  firstName: string;
+  lastName: string;
+  email: string;
+  storeName: string;
+  createdAt: string;
+}
+
 @Injectable()
 export class NotificationsService {
-  private readonly streams = new Map<number, Subject<MessageEvent>>();
+  private readonly streams = new Map<number, { subject: Subject<MessageEvent>; role: string }>();
 
   constructor(private readonly callMeBot: CallMeBotService) {}
 
-  subscribe(userId: number): Observable<MessageEvent> {
+  subscribe(userId: number, role: string): Observable<MessageEvent> {
     if (!this.streams.has(userId)) {
-      this.streams.set(userId, new Subject<MessageEvent>());
+      this.streams.set(userId, { subject: new Subject<MessageEvent>(), role });
     }
-    return this.streams.get(userId)!.asObservable();
+    return this.streams.get(userId)!.subject.asObservable();
   }
 
   unsubscribe(userId: number) {
-    const subject = this.streams.get(userId);
-    if (subject) {
-      subject.complete();
+    const entry = this.streams.get(userId);
+    if (entry) {
+      entry.subject.complete();
       this.streams.delete(userId);
     }
   }
 
   notifyUser(userId: number, payload: OrderStatusPayload): void {
-    const subject = this.streams.get(userId);
-    if (subject) {
-      subject.next({ data: payload });
+    const entry = this.streams.get(userId);
+    if (entry) {
+      entry.subject.next({ data: payload });
     }
+  }
+
+  notifyAdmins(payload: UserRegisteredPayload | InvitationAcceptedPayload): void {
+    const event: MessageEvent = { data: payload };
+    this.streams.forEach(({ subject, role }) => {
+      if (role === 'admin') subject.next(event);
+    });
   }
 
   async notifyNewOrder(order: Order, customer: Customer, stores: Store[]) {
@@ -68,9 +94,11 @@ export class NotificationsService {
       createdAt: new Date().toISOString(),
     };
 
-    // SSE — broadcast to all connected sessions (admins/sellers)
+    // SSE — broadcast to sellers only (admins receive site-level events, not order events)
     const event: MessageEvent = { data: payload };
-    this.streams.forEach((subject) => subject.next(event));
+    this.streams.forEach(({ subject, role }) => {
+      if (role !== 'admin') subject.next(event);
+    });
 
     // WhatsApp via CallMeBot — per store
     for (const store of stores) {

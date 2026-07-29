@@ -11,6 +11,7 @@ import { Role } from '../users/entities/role.entity';
 import { Customer } from '../customers/entities/customer.entity';
 import { InvitationsModule } from '../invitations/invitations.module';
 import { StoresModule } from '../stores/stores.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { StoresModule } from '../stores/stores.module';
     ConfigModule.forRoot(),
     InvitationsModule,
     StoresModule,
+    NotificationsModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

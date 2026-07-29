@@ -54,6 +54,9 @@ export class NotificationsController {
   @Sse('stream')
   @UseGuards(SseJwtGuard)
   stream(@Req() req: any): Observable<MessageEvent> {
-    return this.notificationsService.subscribe(req.user.userId as number);
+    return this.notificationsService.subscribe(
+      req.user.userId as number,
+      (req.user.role as string) ?? 'seller',
+    );
   }
 }

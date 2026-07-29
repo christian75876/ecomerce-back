@@ -15,7 +15,7 @@ export class AdvertisingService {
   ) {}
 
   // ── Admin Dashboard ──────────────────────────────────────────────────────────
-  async getAdminDashboard() {
+  async getAdminDashboard(from?: Date, to?: Date) {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
@@ -90,6 +90,19 @@ export class AdvertisingService {
       status: storeStatusMap.get(store.id) ?? 'NEVER',
     }));
 
+    // Period-filtered revenue (when date range is provided)
+    let periodCollected: number | undefined;
+    let periodPaymentCount: number | undefined;
+    if (from && to) {
+      const toEnd = new Date(to);
+      toEnd.setHours(23, 59, 59, 999);
+      const periodAds = nonCancelledAds.filter(
+        (a) => new Date(a.createdAt) >= from && new Date(a.createdAt) <= toEnd,
+      );
+      periodCollected = periodAds.reduce((sum, a) => sum + Number(a.paidAmount), 0);
+      periodPaymentCount = periodAds.length;
+    }
+
     return {
       overview: {
         totalStores: allStores.length,
@@ -103,6 +116,7 @@ export class AdvertisingService {
         totalCollected,
         thisMonthCollected,
         lastMonthCollected,
+        ...(periodCollected !== undefined && { periodCollected, periodPaymentCount }),
       },
       storesWithStatus,
     };

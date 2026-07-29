@@ -107,7 +107,7 @@ export class SubscriptionsService implements OnModuleInit {
   }
 
   // ── Admin Dashboard ───────────────────────────────────────────────────────
-  async getAdminDashboard() {
+  async getAdminDashboard(from?: Date, to?: Date) {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
@@ -186,6 +186,22 @@ export class SubscriptionsService implements OnModuleInit {
       status: storeStatusMap.get(store.id) ?? 'NEVER',
     }));
 
+    // Period-filtered revenue (when date range is provided)
+    let periodCollected: number | undefined;
+    let periodPaymentCount: number | undefined;
+    if (from && to) {
+      const toEnd = new Date(to);
+      toEnd.setHours(23, 59, 59, 999);
+      const periodSubs = allSubs.filter(
+        (s) =>
+          s.status !== SubscriptionStatus.CANCELLED &&
+          new Date(s.createdAt) >= from &&
+          new Date(s.createdAt) <= toEnd,
+      );
+      periodCollected = periodSubs.reduce((sum, s) => sum + Number(s.paidAmount), 0);
+      periodPaymentCount = periodSubs.length;
+    }
+
     return {
       overview: {
         totalStores: allStores.length,
@@ -207,6 +223,7 @@ export class SubscriptionsService implements OnModuleInit {
           lastMonthCollected > 0
             ? Math.round(((thisMonthCollected - lastMonthCollected) / lastMonthCollected) * 100)
             : thisMonthCollected > 0 ? 100 : 0,
+        ...(periodCollected !== undefined && { periodCollected, periodPaymentCount }),
       },
       revenueByMonth,
       recentPayments: allSubs.slice(0, 15),

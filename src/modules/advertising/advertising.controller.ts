@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt.auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -14,8 +14,13 @@ export class AdvertisingController {
   @Get('admin-dashboard')
   @UseGuards(RolesGuard)
   @Roles('admin')
-  async getAdminDashboard() {
-    return this.advertisingService.getAdminDashboard();
+  async getAdminDashboard(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    const fromDate = from ? new Date(from) : undefined;
+    const toDate = to ? new Date(to) : undefined;
+    return this.advertisingService.getAdminDashboard(fromDate, toDate);
   }
 
   @Post()

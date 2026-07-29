@@ -4,8 +4,8 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsStrongPassword,
   MaxLength,
-  MinLength,
 } from 'class-validator';
 
 export class RegisterCustomerDto {
@@ -26,9 +26,11 @@ export class RegisterCustomerDto {
   @IsNotEmpty()
   email: string;
 
-  @ApiProperty({ example: 'secure123' })
-  @IsString()
-  @MinLength(6)
+  @ApiProperty({ example: 'secure1@' })
+  @IsStrongPassword(
+    { minLength: 6, minLowercase: 0, minUppercase: 0, minNumbers: 1, minSymbols: 1 },
+    { message: 'La contraseña debe tener mínimo 6 caracteres, un número y un símbolo especial' },
+  )
   @IsNotEmpty()
   password: string;
 

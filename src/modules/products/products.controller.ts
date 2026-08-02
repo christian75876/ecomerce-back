@@ -25,6 +25,8 @@ import { UpdateProductDto } from './dto/update-product.dto';
 import { UpdateProductStatusDto } from './dto/update-product-status.dto';
 import { QueryProductOptionsDto } from './dto/query-product-options.dto';
 import { QueryProductsDto } from './dto/query-products.dto';
+import { CreateProductVariantDto } from './dto/create-product-variant.dto';
+import { UpdateProductVariantDto } from './dto/update-product-variant.dto';
 
 const allowedImageMimeTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
@@ -218,5 +220,43 @@ export class ProductsController {
     @Param('videoId') videoId: string,
   ) {
     return this.productsService.removeVideo(id, videoId);
+  }
+
+  // ── Variants ───────────────────────────────────────────────────────────────
+
+  @Get(':id/variants')
+  async getVariants(@Param('id') id: string) {
+    return this.productsService.getVariants(id);
+  }
+
+  @Post(':id/variants')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'seller')
+  async createVariant(
+    @Param('id') id: string,
+    @Body() dto: CreateProductVariantDto,
+  ) {
+    return this.productsService.createVariant(id, dto);
+  }
+
+  @Patch(':id/variants/:variantId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'seller')
+  async updateVariant(
+    @Param('id') id: string,
+    @Param('variantId') variantId: string,
+    @Body() dto: UpdateProductVariantDto,
+  ) {
+    return this.productsService.updateVariant(id, variantId, dto);
+  }
+
+  @Delete(':id/variants/:variantId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'seller')
+  async deleteVariant(
+    @Param('id') id: string,
+    @Param('variantId') variantId: string,
+  ) {
+    return this.productsService.deleteVariant(id, variantId);
   }
 }

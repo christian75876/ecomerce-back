@@ -1,4 +1,5 @@
 import {
+  IsArray,
   IsDateString,
   IsBoolean,
   IsInt,
@@ -95,4 +96,53 @@ export class CreateProductDto {
   @IsOptional()
   @IsDateString()
   initialExpiresAt?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  brand?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  tags?: string[];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  unit?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  weight?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(10)
+  weightUnit?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  width?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  height?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  depth?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(10)
+  dimensionsUnit?: string;
 }

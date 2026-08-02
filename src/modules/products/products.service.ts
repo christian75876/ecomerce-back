@@ -25,6 +25,9 @@ import { SaleItem } from '../sales/entities/sale-item.entity';
 import { InventoryReferenceType } from '../inventory/entities/inventory-batch-allocation.entity';
 import { QueryProductOptionsDto } from './dto/query-product-options.dto';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
+import { ProductVariant } from './entities/product-variant.entity';
+import { CreateProductVariantDto } from './dto/create-product-variant.dto';
+import { UpdateProductVariantDto } from './dto/update-product-variant.dto';
 
 const YOUTUBE_REGEX = /^https?:\/\/(www\.)?(youtube\.com\/(watch\?v=|shorts\/)|youtu\.be\/)[\w-]+/;
 const INSTAGRAM_REGEX = /^https?:\/\/(www\.)?instagram\.com\/(p|reel|tv)\/[\w-]+/;
@@ -50,6 +53,8 @@ export class ProductsService {
     private readonly videosRepository: Repository<ProductVideo>,
     @InjectRepository(ProductImage)
     private readonly imagesRepository: Repository<ProductImage>,
+    @InjectRepository(ProductVariant)
+    private readonly variantsRepository: Repository<ProductVariant>,
     @InjectRepository(Category)
     private readonly categoriesRepository: Repository<Category>,
     @InjectRepository(Store)
@@ -174,13 +179,15 @@ export class ProductsService {
 
   async findOne(id: string) {
     const product = await this.findEntity(id);
-    const [stock, ratingMap] = await Promise.all([
+    const [stock, ratingMap, variants] = await Promise.all([
       this.inventoryService.getCurrentStock(id),
       this.getRatingMap([id]),
+      this.variantsRepository.find({ where: { productId: id }, order: { order: 'ASC', createdAt: 'ASC' } }),
     ]);
     const rating = ratingMap.get(id);
     return {
       ...product,
+      variants,
       availableQuantity: stock,
       averageRating: rating?.averageRating ?? null,
       reviewCount: rating?.reviewCount ?? 0,
@@ -716,5 +723,68 @@ export class ProductsService {
     }
 
     return customer;
+  }
+
+  // ── Product Variants ────────────────────────────────────────────────────────
+
+  async getVariants(productId: string) {
+    await this.findEntity(productId);
+    return this.variantsRepository.find({
+      where: { productId },
+      order: { order: 'ASC', createdAt: 'ASC' },
+    });
+  }
+
+  async createVariant(productId: string, dto: CreateProductVariantDto) {
+    await this.findEntity(productId);
+
+    if (dto.sku) {
+      const existing = await this.variantsRepository.findOne({ where: { sku: dto.sku.trim().toUpperCase() } });
+      if (existing) throw new ConflictException('El SKU de la variante ya está en uso');
+    }
+
+    const count = await this.variantsRepository.count({ where: { productId } });
+    const variant = this.variantsRepository.create({
+      ...dto,
+      productId,
+      sku: dto.sku ? dto.sku.trim().toUpperCase() : null,
+      size: dto.size?.trim() || null,
+      color: dto.color?.trim() || null,
+      colorHex: dto.colorHex?.trim() || null,
+      imageUrl: dto.imageUrl?.trim() || null,
+      stock: dto.stock ?? 0,
+      isActive: dto.isActive ?? true,
+      order: dto.order ?? count,
+    });
+
+    return this.variantsRepository.save(variant);
+  }
+
+  async updateVariant(productId: string, variantId: string, dto: UpdateProductVariantDto) {
+    const variant = await this.variantsRepository.findOne({ where: { id: variantId, productId } });
+    if (!variant) throw new NotFoundException('Variante no encontrada');
+
+    if (dto.sku && dto.sku.trim().toUpperCase() !== variant.sku) {
+      const existing = await this.variantsRepository.findOne({ where: { sku: dto.sku.trim().toUpperCase() } });
+      if (existing) throw new ConflictException('El SKU de la variante ya está en uso');
+    }
+
+    Object.assign(variant, {
+      ...dto,
+      sku: dto.sku !== undefined ? (dto.sku ? dto.sku.trim().toUpperCase() : null) : variant.sku,
+      size: dto.size !== undefined ? (dto.size?.trim() || null) : variant.size,
+      color: dto.color !== undefined ? (dto.color?.trim() || null) : variant.color,
+      colorHex: dto.colorHex !== undefined ? (dto.colorHex?.trim() || null) : variant.colorHex,
+      imageUrl: dto.imageUrl !== undefined ? (dto.imageUrl?.trim() || null) : variant.imageUrl,
+    });
+
+    return this.variantsRepository.save(variant);
+  }
+
+  async deleteVariant(productId: string, variantId: string) {
+    const variant = await this.variantsRepository.findOne({ where: { id: variantId, productId } });
+    if (!variant) throw new NotFoundException('Variante no encontrada');
+    await this.variantsRepository.remove(variant);
+    return { deleted: true };
   }
 }

@@ -4,6 +4,7 @@ import { Product } from './entities/product.entity';
 import { ProductFavorite } from './entities/product-favorite.entity';
 import { ProductVideo } from './entities/product-video.entity';
 import { ProductImage } from './entities/product-image.entity';
+import { ProductVariant } from './entities/product-variant.entity';
 import { Category } from '../categories/entities/category.entity';
 import { ProductsController } from './products.controller';
 import { ProductsService } from './products.service';
@@ -23,6 +24,7 @@ import { MenuCategory } from '../menu-categories/entities/menu-category.entity';
       ProductFavorite,
       ProductVideo,
       ProductImage,
+      ProductVariant,
       Category,
       Store,
       Supplier,

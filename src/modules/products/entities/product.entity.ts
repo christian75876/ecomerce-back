@@ -8,6 +8,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { ProductVariant } from './product-variant.entity';
 import { Category } from '../../categories/entities/category.entity';
 import { InventoryMovement } from '../../inventory/entities/inventory-movement.entity';
 import { Store } from '../../stores/entities/store.entity';
@@ -56,6 +57,33 @@ export class Product {
   @Column({ name: 'low_stock_threshold', type: 'int', nullable: true })
   lowStockThreshold: number | null;
 
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  brand: string | null;
+
+  @Column({ type: 'simple-array', nullable: true })
+  tags: string[] | null;
+
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  unit: string | null;
+
+  @Column({ type: 'decimal', precision: 10, scale: 3, nullable: true })
+  weight: number | null;
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  width: number | null;
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  height: number | null;
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  depth: number | null;
+
+  @Column({ name: 'weight_unit', type: 'varchar', length: 10, nullable: true })
+  weightUnit: string | null;
+
+  @Column({ name: 'dimensions_unit', type: 'varchar', length: 10, nullable: true })
+  dimensionsUnit: string | null;
+
   @Column({ name: 'category_id', type: 'uuid' })
   categoryId: string;
 
@@ -88,6 +116,9 @@ export class Product {
   @ManyToOne(() => MenuCategory, { eager: true, nullable: true })
   @JoinColumn({ name: 'menu_category_id' })
   menuCategory: MenuCategory | null;
+
+  @OneToMany(() => ProductVariant, (variant) => variant.product)
+  variants: ProductVariant[];
 
   @OneToMany(
     () => InventoryMovement,

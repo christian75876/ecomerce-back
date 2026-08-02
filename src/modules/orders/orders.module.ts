@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
+import { OrdersScheduler } from './orders.scheduler';
 import { Customer } from '../customers/entities/customer.entity';
 import { Product } from '../products/entities/product.entity';
 import { Order } from './entities/order.entity';
@@ -15,6 +17,7 @@ import { PushModule } from '../push/push.module';
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     TypeOrmModule.forFeature([Customer, Product, Order, OrderItem]),
     InventoryModule,
     CustomersModule,
@@ -24,6 +27,6 @@ import { PushModule } from '../push/push.module';
     PushModule,
   ],
   controllers: [OrdersController],
-  providers: [OrdersService],
+  providers: [OrdersService, OrdersScheduler],
 })
 export class OrdersModule {}

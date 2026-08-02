@@ -118,7 +118,7 @@ export class CustomersService {
     });
 
     if (!customer) {
-      throw new NotFoundException('Customer not found');
+      throw new NotFoundException('Cliente no encontrado');
     }
 
     return customer;
@@ -135,7 +135,7 @@ export class CustomersService {
 
   async create(createCustomerDto: CreateCustomerDto) {
     if (!createCustomerDto.storeId) {
-      throw new BadRequestException('Store is required for customer');
+      throw new BadRequestException('La tienda es requerida para crear un cliente');
     }
 
     await this.ensureStoreExists(createCustomerDto.storeId);
@@ -147,7 +147,7 @@ export class CustomersService {
     );
 
     if (existingCustomer) {
-      throw new ConflictException('Customer email is already in use for this store');
+      throw new ConflictException('El correo ya está registrado para esta tienda');
     }
 
     const customer = this.customersRepository.create({
@@ -180,7 +180,7 @@ export class CustomersService {
       );
 
       if (existingCustomer && existingCustomer.id !== id) {
-        throw new ConflictException('Customer email is already in use for this store');
+        throw new ConflictException('El correo ya está registrado para esta tienda');
       }
 
       customer.email = normalizedEmail;
@@ -226,7 +226,7 @@ export class CustomersService {
     const customer = await this.findOne(id, storeId);
 
     if (payload.amount > Number(customer.creditBalance)) {
-      throw new BadRequestException('Payment exceeds current customer balance');
+      throw new BadRequestException('El pago supera el saldo actual del cliente');
     }
 
     customer.creditBalance = Number(customer.creditBalance) - payload.amount;
@@ -252,14 +252,14 @@ export class CustomersService {
     const customer = await this.findOne(customerId, storeId ?? undefined);
 
     if (!customer.creditEnabled) {
-      throw new BadRequestException('Customer credit is disabled');
+      throw new BadRequestException('El crédito del cliente está desactivado');
     }
 
     const creditLimit = Number(customer.creditLimit ?? 0);
     const nextBalance = Number(customer.creditBalance) + amount;
 
     if (creditLimit > 0 && nextBalance > creditLimit) {
-      throw new BadRequestException('Customer credit limit exceeded');
+      throw new BadRequestException('Se superó el límite de crédito del cliente');
     }
 
     customer.creditBalance = nextBalance;
@@ -281,7 +281,7 @@ export class CustomersService {
     const store = await this.storesRepository.findOne({ where: { id: storeId } });
 
     if (!store) {
-      throw new NotFoundException('Store not found');
+      throw new NotFoundException('Tienda no encontrada');
     }
   }
 }

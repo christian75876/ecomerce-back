@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/co
 import { JwtAuthGuard } from '../auth/guards/jwt.auth.guard';
 import { SalesService } from './sales.service';
 import { CreateSaleDto } from './dto/create-sale.dto';
+import { GetSalesQueryDto } from './dto/get-sales-query.dto';
 
 @Controller('sales')
 export class SalesController {
@@ -9,16 +10,8 @@ export class SalesController {
 
   @Get()
   @UseGuards(JwtAuthGuard)
-  async findAll(
-    @Query('storeId') storeId?: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-  ) {
-    return this.salesService.findAll(
-      storeId,
-      page ? parseInt(page, 10) : 1,
-      limit ? parseInt(limit, 10) : 20,
-    );
+  async findAll(@Query() query: GetSalesQueryDto) {
+    return this.salesService.findAll(query);
   }
 
   @Get(':id')

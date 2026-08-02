@@ -20,6 +20,7 @@ export class PushController {
   }
 
   @Delete('unsubscribe')
+  @UseGuards(JwtAuthGuard)
   async unsubscribe(@Body() dto: { endpoint: string }) {
     await this.pushService.unsubscribe(dto.endpoint);
     return { ok: true };

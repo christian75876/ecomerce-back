@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { DatabaseModule } from './modules/database/database.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AppInitializer } from './app.initializer';
@@ -27,6 +28,7 @@ import { AppConfigModule } from './modules/app-config/app-config.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { AdvertisingModule } from './modules/advertising/advertising.module';
 import { PushModule } from './modules/push/push.module';
+import { SitemapModule } from './modules/sitemap/sitemap.module';
 
 @Module({
   imports: [
@@ -34,6 +36,7 @@ import { PushModule } from './modules/push/push.module';
       isGlobal: true,
       envFilePath: '.env',
     }),
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
     DatabaseModule,
     EmailModule,
     AuthModule,
@@ -58,6 +61,7 @@ import { PushModule } from './modules/push/push.module';
     SubscriptionsModule,
     AdvertisingModule,
     PushModule,
+    SitemapModule,
   ],
   providers: [
     AppInitializer,

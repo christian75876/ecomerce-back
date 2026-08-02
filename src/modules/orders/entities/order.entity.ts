@@ -20,6 +20,12 @@ export enum OrderStatus {
   CANCELLED = 'CANCELLED',
 }
 
+export enum PaymentStatus {
+  NONE = 'NONE',
+  SUBMITTED = 'SUBMITTED',
+  CONFIRMED = 'CONFIRMED',
+}
+
 export enum DeliveryMethod {
   DELIVERY = 'DELIVERY',
   PICKUP = 'PICKUP',
@@ -79,6 +85,29 @@ export class Order {
 
   @Column({ name: 'discount_amount', type: 'decimal', precision: 12, scale: 2, default: 0 })
   discountAmount: number;
+
+  @Column({ name: 'payment_method_type', type: 'varchar', length: 120, nullable: true })
+  paymentMethodType: string | null;
+
+  @Column({ name: 'payment_reference', type: 'varchar', length: 200, nullable: true })
+  paymentReference: string | null;
+
+  @Column({ name: 'payment_evidence_image_path', type: 'varchar', length: 500, nullable: true })
+  paymentEvidenceImagePath: string | null;
+
+  @Column({
+    name: 'payment_status',
+    type: 'enum',
+    enum: PaymentStatus,
+    default: PaymentStatus.NONE,
+  })
+  paymentStatus: PaymentStatus;
+
+  @Column({ name: 'payment_confirmed_at', type: 'timestamp', nullable: true })
+  paymentConfirmedAt: Date | null;
+
+  @Column({ name: 'payment_confirmed_by_user_id', type: 'int', nullable: true })
+  paymentConfirmedByUserId: number | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;

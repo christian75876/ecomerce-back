@@ -43,7 +43,7 @@ export class StoresService {
     const store = await this.storesRepository.findOne({ where: { id } });
 
     if (!store) {
-      throw new NotFoundException('Store not found');
+      throw new NotFoundException('Tienda no encontrada');
     }
 
     return store;
@@ -54,10 +54,10 @@ export class StoresService {
       where: publicOnly ? { slug, isActive: true } : { slug },
     });
 
-    if (!store) throw new NotFoundException('Store not found');
+    if (!store) throw new NotFoundException('Tienda no encontrada');
 
     if (publicOnly && store.subscriptionExpiresAt && new Date(store.subscriptionExpiresAt) < new Date()) {
-      throw new NotFoundException('Store not found');
+      throw new NotFoundException('Tienda no encontrada');
     }
 
     return store;
@@ -289,7 +289,7 @@ export class StoresService {
     });
 
     if (existingStore && existingStore.id !== currentStoreId) {
-      throw new ConflictException('Store slug is already in use');
+      throw new ConflictException('La URL de la tienda ya está en uso');
     }
   }
 }

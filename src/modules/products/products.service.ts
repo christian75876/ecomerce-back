@@ -196,7 +196,7 @@ export class ProductsService {
 
   private async findEntity(id: string): Promise<Product> {
     const product = await this.productsRepository.findOne({ where: { id } });
-    if (!product) throw new NotFoundException('Product not found');
+    if (!product) throw new NotFoundException('Producto no encontrado');
     return product;
   }
 
@@ -547,7 +547,7 @@ export class ProductsService {
     });
 
     if (!product) {
-      throw new NotFoundException('Product not found');
+      throw new NotFoundException('Producto no encontrado');
     }
 
     const existingFavorite = await this.favoritesRepository.findOne({
@@ -602,7 +602,7 @@ export class ProductsService {
     });
 
     if (!category) {
-      throw new NotFoundException('Category not found');
+      throw new NotFoundException('Categoría no encontrada');
     }
   }
 
@@ -612,7 +612,7 @@ export class ProductsService {
     });
 
     if (!store) {
-      throw new NotFoundException('Store not found');
+      throw new NotFoundException('Tienda no encontrada');
     }
   }
 
@@ -622,7 +622,7 @@ export class ProductsService {
     });
 
     if (!supplier) {
-      throw new NotFoundException('Supplier not found');
+      throw new NotFoundException('Proveedor no encontrado');
     }
   }
 
@@ -635,7 +635,7 @@ export class ProductsService {
     });
 
     if (existingProduct && existingProduct.id !== currentProductId) {
-      throw new ConflictException('SKU is already in use');
+      throw new ConflictException('El SKU ya está en uso por otro producto');
     }
   }
 
@@ -719,7 +719,7 @@ export class ProductsService {
     });
 
     if (!customer) {
-      throw new UnauthorizedException('Only authenticated customers can manage favorites');
+      throw new UnauthorizedException('Solo los clientes autenticados pueden gestionar favoritos');
     }
 
     return customer;

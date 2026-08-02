@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Observable, Subject } from 'rxjs';
+import { finalize } from 'rxjs/operators';
 import { MessageEvent } from '@nestjs/common';
 import { Store } from '../stores/entities/store.entity';
 import { Order } from '../orders/entities/order.entity';
@@ -47,21 +48,41 @@ export interface InvitationAcceptedPayload {
 
 @Injectable()
 export class NotificationsService {
-  private readonly streams = new Map<number, { subject: Subject<MessageEvent>; role: string }>();
+  // Each user may have multiple concurrent connections (browser tabs).
+  // We track an array of Subjects per userId and clean up via finalize().
+  private readonly streams = new Map<number, { subjects: Subject<MessageEvent>[]; role: string }>();
 
   constructor(private readonly callMeBot: CallMeBotService) {}
 
   subscribe(userId: number, role: string): Observable<MessageEvent> {
     if (!this.streams.has(userId)) {
-      this.streams.set(userId, { subject: new Subject<MessageEvent>(), role });
+      this.streams.set(userId, { subjects: [], role });
     }
-    return this.streams.get(userId)!.subject.asObservable();
+    const entry = this.streams.get(userId)!;
+    // Always update role in case it changed (e.g. role upgrade)
+    entry.role = role;
+
+    const subject = new Subject<MessageEvent>();
+    entry.subjects.push(subject);
+
+    // Clean up this specific connection when the HTTP stream closes
+    return subject.asObservable().pipe(
+      finalize(() => {
+        const e = this.streams.get(userId);
+        if (e) {
+          e.subjects = e.subjects.filter((s) => s !== subject);
+          if (e.subjects.length === 0) {
+            this.streams.delete(userId);
+          }
+        }
+      }),
+    );
   }
 
   unsubscribe(userId: number) {
     const entry = this.streams.get(userId);
     if (entry) {
-      entry.subject.complete();
+      entry.subjects.forEach((s) => s.complete());
       this.streams.delete(userId);
     }
   }
@@ -69,14 +90,15 @@ export class NotificationsService {
   notifyUser(userId: number, payload: OrderStatusPayload): void {
     const entry = this.streams.get(userId);
     if (entry) {
-      entry.subject.next({ data: payload });
+      const event: MessageEvent = { data: payload };
+      entry.subjects.forEach((s) => s.next(event));
     }
   }
 
   notifyAdmins(payload: UserRegisteredPayload | InvitationAcceptedPayload): void {
     const event: MessageEvent = { data: payload };
-    this.streams.forEach(({ subject, role }) => {
-      if (role === 'admin') subject.next(event);
+    this.streams.forEach(({ subjects, role }) => {
+      if (role === 'admin') subjects.forEach((s) => s.next(event));
     });
   }
 
@@ -94,10 +116,10 @@ export class NotificationsService {
       createdAt: new Date().toISOString(),
     };
 
-    // SSE — broadcast to sellers only (admins receive site-level events, not order events)
+    // Broadcast to ALL connected panel users (sellers AND admins)
     const event: MessageEvent = { data: payload };
-    this.streams.forEach(({ subject, role }) => {
-      if (role !== 'admin') subject.next(event);
+    this.streams.forEach(({ subjects }) => {
+      subjects.forEach((s) => s.next(event));
     });
 
     // WhatsApp via CallMeBot — per store

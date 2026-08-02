@@ -174,6 +174,9 @@ export class Store {
   @Column({ name: 'address_text', type: 'varchar', length: 300, nullable: true })
   addressText: string | null;
 
+  @Column({ name: 'payment_instructions', type: 'text', nullable: true })
+  paymentInstructions: string | null;
+
   @OneToMany(() => Product, (product) => product.store)
   products: Product[];
 

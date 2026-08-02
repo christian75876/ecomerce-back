@@ -144,4 +144,8 @@ export class UpdateStoreDto {
   @IsString()
   @MaxLength(300)
   addressText?: string | null;
+
+  @IsOptional()
+  @IsString()
+  paymentInstructions?: string | null;
 }

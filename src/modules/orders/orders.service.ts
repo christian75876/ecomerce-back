@@ -5,10 +5,11 @@ import { Customer } from '../customers/entities/customer.entity';
 import { Product } from '../products/entities/product.entity';
 import { Store } from '../stores/entities/store.entity';
 import { InventoryService } from '../inventory/inventory.service';
-import { Order, OrderStatus } from './entities/order.entity';
+import { Order, OrderStatus, PaymentStatus } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
+import { SubmitPaymentDto } from './dto/submit-payment.dto';
 import { InventoryReferenceType } from '../inventory/entities/inventory-batch-allocation.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CouponsService } from '../coupons/coupons.service';
@@ -34,7 +35,7 @@ export class OrdersService {
     private readonly pushService: PushService,
   ) {}
 
-  async findAll(storeId?: string, page = 1, limit = 20, status?: string, search?: string) {
+  async findAll(storeId?: string, page = 1, limit = 20, status?: string, search?: string, paymentStatus?: string) {
     const take = Math.min(Math.max(limit, 1), 100);
     const safePage = Math.max(page, 1);
     const skip = (safePage - 1) * take;
@@ -62,6 +63,10 @@ export class OrdersService {
 
     if (status) {
       qb.andWhere('order.status = :status', { status });
+    }
+
+    if (paymentStatus) {
+      qb.andWhere('order.payment_status = :paymentStatus', { paymentStatus });
     }
 
     if (search) {
@@ -267,7 +272,58 @@ export class OrdersService {
       tag: `order-new-${fullOrder.id}`,
     });
 
-    return fullOrder;
+    // Include store payment instructions in response so the customer can pay immediately
+    const storePaymentInstructions =
+      notifyStores.length === 1 ? (notifyStores[0].paymentInstructions ?? null) : null;
+
+    return Object.assign(fullOrder, { storePaymentInstructions });
+  }
+
+  async submitPayment(id: string, dto: SubmitPaymentDto, evidenceImagePath?: string) {
+    const order = await this.findOne(id);
+    if (dto.paymentMethodType) order.paymentMethodType = dto.paymentMethodType.trim();
+    if (dto.paymentReference) order.paymentReference = dto.paymentReference.trim();
+    if (evidenceImagePath) order.paymentEvidenceImagePath = evidenceImagePath;
+    if (order.paymentStatus === PaymentStatus.NONE) {
+      order.paymentStatus = PaymentStatus.SUBMITTED;
+    }
+    return this.ordersRepository.save(order);
+  }
+
+  async confirmPayment(id: string, confirmedByUserId: number) {
+    const order = await this.findOne(id);
+    if (order.paymentConfirmedAt) {
+      return order;
+    }
+    order.paymentConfirmedAt = new Date();
+    order.paymentConfirmedByUserId = confirmedByUserId;
+    order.paymentStatus = PaymentStatus.CONFIRMED;
+    if (order.status === OrderStatus.PENDING) {
+      order.status = OrderStatus.PAID;
+    }
+    const saved = await this.ordersRepository.save(order);
+    void this.notifyCustomerStatusChange(saved);
+    return saved;
+  }
+
+  async autoCancelUnpaidOrders(): Promise<number> {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 5);
+
+    const staleOrders = await this.ordersRepository
+      .createQueryBuilder('order')
+      .leftJoinAndSelect('order.customer', 'customer')
+      .where('order.payment_status = :ps', { ps: PaymentStatus.NONE })
+      .andWhere('order.status = :st', { st: OrderStatus.PENDING })
+      .andWhere('order.created_at < :cutoff', { cutoff })
+      .getMany();
+
+    for (const order of staleOrders) {
+      order.status = OrderStatus.CANCELLED;
+      await this.ordersRepository.save(order);
+      void this.notifyCustomerStatusChange(order).catch(() => null);
+    }
+    return staleOrders.length;
   }
 
   private async resolveCustomer(

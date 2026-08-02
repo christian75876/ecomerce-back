@@ -17,6 +17,7 @@ export class DatabaseConfigService implements TypeOrmOptionsFactory {
       dropSchema: envConfig.databaseDropSchema,
       logging: envConfig.databaseLogging,
       logger: 'advanced-console',
+      extra: { options: '-c TimeZone=UTC' },
     };
 
     const useSSL = process.env.DB_SSL === 'true';

@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { Brackets, DataSource, Repository } from 'typeorm';
+import { GetSalesQueryDto } from './dto/get-sales-query.dto';
 import { Product } from '../products/entities/product.entity';
 import { InventoryService } from '../inventory/inventory.service';
 import { Sale, SalePaymentMethod } from './entities/sale.entity';
@@ -30,21 +31,59 @@ export class SalesService {
     private readonly auditService: AuditService,
   ) {}
 
-  async findAll(storeId?: string, page = 1, limit = 20) {
-    const take = Math.min(Math.max(limit, 1), 100);
-    const skip = (Math.max(page, 1) - 1) * take;
+  async findAll(query: GetSalesQueryDto = {}) {
+    const { storeId, paymentMethod, deliveryType, from, to, search, page = 1, limit = 20 } = query;
+    const take = Math.min(Math.max(+limit, 1), 100);
+    const skip = (Math.max(+page, 1) - 1) * take;
 
-    const [items, total] = await this.salesRepository.findAndCount({
-      where: storeId ? { storeId } : undefined,
-      order: { createdAt: 'DESC' },
-      take,
-      skip,
-    });
+    const qb = this.salesRepository
+      .createQueryBuilder('sale')
+      .leftJoinAndSelect('sale.customer', 'customer')
+      .leftJoinAndSelect('sale.store', 'store')
+      .leftJoinAndSelect('sale.items', 'items')
+      .leftJoinAndSelect('items.product', 'product')
+      .orderBy('sale.createdAt', 'DESC')
+      .take(take)
+      .skip(skip);
+
+    if (storeId) {
+      qb.andWhere('sale.storeId = :storeId', { storeId });
+    }
+    if (paymentMethod) {
+      qb.andWhere('sale.paymentMethod = :paymentMethod', { paymentMethod });
+    }
+    if (deliveryType === 'NONE') {
+      qb.andWhere('sale.deliveryType IS NULL');
+    } else if (deliveryType === 'LOCAL' || deliveryType === 'SHIPPING') {
+      qb.andWhere('sale.deliveryType = :deliveryType', { deliveryType });
+    }
+    if (from) {
+      qb.andWhere('sale.createdAt >= :from', { from: new Date(from) });
+    }
+    if (to) {
+      const toDate = new Date(to);
+      toDate.setHours(23, 59, 59, 999);
+      qb.andWhere('sale.createdAt <= :to', { to: toDate });
+    }
+    if (search?.trim()) {
+      const s = `%${search.trim().toLowerCase()}%`;
+      qb.andWhere(
+        new Brackets((b) => {
+          b.where('LOWER(CAST(sale.id AS varchar)) LIKE :s')
+            .orWhere("LOWER(COALESCE(sale.guestName, '')) LIKE :s")
+            .orWhere("LOWER(COALESCE(customer.firstName, '')) LIKE :s")
+            .orWhere("LOWER(COALESCE(customer.lastName, '')) LIKE :s");
+        }),
+        { s },
+      );
+    }
+
+    const [items, total] = await qb.getManyAndCount();
 
     return {
       items,
       total,
-      page: Math.max(page, 1),
+      page: Math.max(+page, 1),
       limit: take,
       totalPages: Math.ceil(total / take),
     };
@@ -126,6 +165,14 @@ export class SalesService {
         customerId: customer?.id ?? null,
         storeId: createSaleDto.storeId ?? null,
         cashSessionId: createSaleDto.cashSessionId ?? null,
+        guestName: createSaleDto.guestName ?? null,
+        guestPhone: createSaleDto.guestPhone ?? null,
+        guestDocType: createSaleDto.guestDocType ?? null,
+        guestDoc: createSaleDto.guestDoc ?? null,
+        deliveryType: createSaleDto.deliveryType ?? null,
+        deliveryAddress: createSaleDto.deliveryAddress ?? null,
+        deliveryCity: createSaleDto.deliveryCity ?? null,
+        deliveryNotes: createSaleDto.deliveryNotes ?? null,
       });
       const savedSale = await manager.save(sale);
 

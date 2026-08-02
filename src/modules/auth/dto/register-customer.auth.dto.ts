@@ -44,4 +44,9 @@ export class RegisterCustomerDto {
   @IsOptional()
   @IsString()
   inviteToken?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  cfToken?: string;
 }

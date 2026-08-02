@@ -26,6 +26,7 @@ import { EmailService } from './email.service';
 import { InvitationsService } from '../invitations/invitations.service';
 import { StoresService } from '../stores/stores.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { TurnstileService } from './turnstile.service';
 
 @Injectable()
 export class AuthService {
@@ -46,6 +47,7 @@ export class AuthService {
     private readonly invitationsService: InvitationsService,
     private readonly storesService: StoresService,
     private readonly notificationsService: NotificationsService,
+    private readonly turnstileService: TurnstileService,
   ) {}
 
   private normalizeEmail(email: string): string {
@@ -110,7 +112,8 @@ export class AuthService {
     throw new UnauthorizedException('Correo o contraseña incorrectos.');
   }
 
-  async login({ email, password }: LoginAuthDto) {
+  async login({ email, password, cfToken }: LoginAuthDto) {
+    await this.turnstileService.verify(cfToken);
     const userData = await this.checkCredentials(email, password);
     const user =
       userData instanceof User
@@ -277,7 +280,9 @@ export class AuthService {
     password,
     phone,
     inviteToken,
+    cfToken,
   }: RegisterCustomerDto) {
+    await this.turnstileService.verify(cfToken);
     const normalizedEmail = await this.checkDoesEmailExist(email);
 
     let assignedRole = await this.roleRepository.findOne({ where: { name: 'buyer' } });

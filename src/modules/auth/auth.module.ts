@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { TurnstileService } from './turnstile.service';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -32,7 +33,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
+  providers: [AuthService, JwtStrategy, TurnstileService],
   exports: [JwtStrategy, AuthService],
 })
 export class AuthModule {}

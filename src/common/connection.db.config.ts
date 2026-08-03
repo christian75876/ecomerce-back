@@ -27,7 +27,10 @@ export class DatabaseConfigService implements TypeOrmOptionsFactory {
         ...base,
         type: 'postgres',
         url: databaseUrl,
-        ...(useSSL ? { ssl: { rejectUnauthorized: false }, extra: { ssl: { rejectUnauthorized: false } } } : {}),
+        ...(useSSL && {
+          ssl: { rejectUnauthorized: false },
+          extra: { ssl: { rejectUnauthorized: false }, options: '-c TimeZone=UTC' },
+        }),
       } as TypeOrmModuleOptions;
     }
 

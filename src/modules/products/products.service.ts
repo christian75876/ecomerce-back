@@ -114,9 +114,10 @@ export class ProductsService {
 
     const [products, totalItems] = await qb.skip(skip).take(limit).getManyAndCount();
 
-    const [stockMap, ratingMap] = await Promise.all([
+    const [stockMap, ratingMap, variantsMap] = await Promise.all([
       this.getStockMap(products.map((p) => p.id)),
       this.getRatingMap(products.map((p) => p.id)),
+      this.getVariantsMap(products.map((p) => p.id)),
     ]);
 
     const items = products.map((p) => ({
@@ -124,6 +125,7 @@ export class ProductsService {
       availableQuantity: stockMap.get(p.id) ?? 0,
       averageRating: ratingMap.get(p.id)?.averageRating ?? null,
       reviewCount: ratingMap.get(p.id)?.reviewCount ?? 0,
+      hasVariants: variantsMap.get(p.id) ?? false,
     }));
 
     return {
@@ -174,6 +176,20 @@ export class ProductsService {
         reviewCount: Number(row.reviewCount),
       }),
     );
+    return map;
+  }
+
+  private async getVariantsMap(productIds: string[]): Promise<Map<string, boolean>> {
+    if (productIds.length === 0) return new Map();
+    const rows = await this.variantsRepository
+      .createQueryBuilder('v')
+      .select('v.productId', 'productId')
+      .where('v.productId IN (:...ids)', { ids: productIds })
+      .andWhere('v.isActive = true')
+      .groupBy('v.productId')
+      .getRawMany<{ productId: string }>();
+    const map = new Map<string, boolean>();
+    rows.forEach((row) => map.set(row.productId, true));
     return map;
   }
 

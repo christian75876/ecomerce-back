@@ -126,6 +126,9 @@ export class OrdersService {
   }
 
   async findOne(id: string, requestingUserId?: number, role?: string) {
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_RE.test(id)) throw new NotFoundException('Order not found');
+
     const order = await this.ordersRepository.findOne({
       where: { id },
       relations: { items: { product: true } },
@@ -140,6 +143,9 @@ export class OrdersService {
   }
 
   async findMyOne(id: string, userId: number) {
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_RE.test(id)) throw new NotFoundException('Pedido no encontrado');
+
     const customer = await this.customersRepository.findOne({
       where: { userId },
     });

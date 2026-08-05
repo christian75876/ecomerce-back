@@ -29,6 +29,7 @@ import { SubscriptionsModule } from './modules/subscriptions/subscriptions.modul
 import { AdvertisingModule } from './modules/advertising/advertising.module';
 import { PushModule } from './modules/push/push.module';
 import { SitemapModule } from './modules/sitemap/sitemap.module';
+import { OgPreviewModule } from './modules/og-preview/og-preview.module';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { SitemapModule } from './modules/sitemap/sitemap.module';
     AdvertisingModule,
     PushModule,
     SitemapModule,
+    OgPreviewModule,
   ],
   providers: [
     AppInitializer,

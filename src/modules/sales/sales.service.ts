@@ -101,7 +101,7 @@ export class SalesService {
     return sale;
   }
 
-  async create(createSaleDto: CreateSaleDto) {
+  async create(createSaleDto: CreateSaleDto, userId?: number) {
     return this.dataSource.transaction(async (manager) => {
       const productsRepository = manager.getRepository(Product);
       const customersRepository = manager.getRepository(Customer);
@@ -206,14 +206,20 @@ export class SalesService {
         await this.cashService.registerCashSale(createSaleDto.cashSessionId, total);
       }
 
+      const formattedTotal = new Intl.NumberFormat('es-CO', {
+        style: 'currency',
+        currency: 'COP',
+        minimumFractionDigits: 0,
+      }).format(total);
       await this.auditService.log({
+        userId: userId ?? null,
         action:
           paymentMethod === SalePaymentMethod.CREDIT
             ? 'SALE_CREDIT_CREATED'
             : 'SALE_CREATED',
         entity: 'sale',
         referenceId: savedSale.id,
-        detail: `Sale total ${total}`,
+        detail: `Total: ${formattedTotal}`,
       });
 
       return manager.getRepository(Sale).findOne({ where: { id: savedSale.id } });

@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt.auth.guard';
 import { SalesService } from './sales.service';
 import { CreateSaleDto } from './dto/create-sale.dto';
@@ -22,7 +23,10 @@ export class SalesController {
 
   @Post()
   @UseGuards(JwtAuthGuard)
-  async create(@Body() createSaleDto: CreateSaleDto) {
-    return this.salesService.create(createSaleDto);
+  async create(
+    @Body() createSaleDto: CreateSaleDto,
+    @Req() req: Request & { user: { userId: number } },
+  ) {
+    return this.salesService.create(createSaleDto, req.user.userId);
   }
 }

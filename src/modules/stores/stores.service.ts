@@ -37,7 +37,7 @@ export class StoresService {
       where,
       order: { createdAt: 'DESC' },
     });
-    return stores.map(({ wppApiKey: _omit, ...rest }) => rest);
+    return stores.map(({ wppApiKey: _omit, email: _email, ...rest }) => rest);
   }
 
   async findOneById(id: string) {
@@ -62,7 +62,7 @@ export class StoresService {
     }
 
     if (publicOnly) {
-      const { wppApiKey: _omit, ...rest } = store;
+      const { wppApiKey: _omit, email: _email, ...rest } = store;
       return rest;
     }
 

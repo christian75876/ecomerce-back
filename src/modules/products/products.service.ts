@@ -312,7 +312,9 @@ export class ProductsService {
       });
     }
 
-    return Array.from(collected.values()).slice(0, limit);
+    const items = Array.from(collected.values()).slice(0, limit);
+    const variantsMap = await this.getVariantsMap(items.map((p) => p.id));
+    return items.map((p) => ({ ...p, hasVariants: variantsMap.get(p.id) ?? false }));
   }
 
   async getFeaturedSections(limit = 8) {
@@ -348,12 +350,21 @@ export class ProductsService {
       (product) => !product.store || product.store.isActive,
     );
 
+    const newest = filteredNewestProducts.slice(0, limit);
+    const bestSelling =
+      bestSellingProducts.length > 0
+        ? bestSellingProducts.slice(0, limit)
+        : newest;
+
+    const allIds = [...new Set([...newest.map((p) => p.id), ...bestSelling.map((p) => p.id)])];
+    const variantsMap = await this.getVariantsMap(allIds);
+
+    const withVariants = (products: Product[]) =>
+      products.map((p) => ({ ...p, hasVariants: variantsMap.get(p.id) ?? false }));
+
     return {
-      newestProducts: filteredNewestProducts.slice(0, limit),
-      bestSellingProducts:
-        bestSellingProducts.length > 0
-          ? bestSellingProducts.slice(0, limit)
-          : filteredNewestProducts.slice(0, limit),
+      newestProducts: withVariants(newest),
+      bestSellingProducts: withVariants(bestSelling),
     };
   }
 

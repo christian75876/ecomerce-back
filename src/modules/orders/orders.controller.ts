@@ -16,6 +16,8 @@ import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt.auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from 'src/common/decorators/roles.decorator';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
@@ -34,8 +36,10 @@ export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
   @Get()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'seller')
   async findAll(
+    @Req() req: Request & { user: { userId: number; role: string } },
     @Query('storeId') storeId?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
@@ -50,6 +54,8 @@ export class OrdersController {
       status || undefined,
       search?.trim() || undefined,
       paymentStatus || undefined,
+      req.user.userId,
+      req.user.role,
     );
   }
 
@@ -69,9 +75,13 @@ export class OrdersController {
   }
 
   @Get(':id')
-  @UseGuards(JwtAuthGuard)
-  async findOne(@Param('id') id: string) {
-    return this.ordersService.findOne(id);
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'seller')
+  async findOne(
+    @Param('id') id: string,
+    @Req() req: Request & { user: { userId: number; role: string } },
+  ) {
+    return this.ordersService.findOne(id, req.user.userId, req.user.role);
   }
 
   @Post()
@@ -81,12 +91,14 @@ export class OrdersController {
   }
 
   @Patch(':id/status')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'seller')
   async updateStatus(
     @Param('id') id: string,
     @Body() updateOrderStatusDto: UpdateOrderStatusDto,
+    @Req() req: Request & { user: { userId: number; role: string } },
   ) {
-    return this.ordersService.updateStatus(id, updateOrderStatusDto);
+    return this.ordersService.updateStatus(id, updateOrderStatusDto, req.user.userId, req.user.role);
   }
 
   @Patch(':id/payment')
@@ -111,11 +123,12 @@ export class OrdersController {
   }
 
   @Patch(':id/confirm-payment')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'seller')
   async confirmPayment(
     @Param('id') id: string,
-    @Req() req: Request & { user: { userId: number } },
+    @Req() req: Request & { user: { userId: number; role: string } },
   ) {
-    return this.ordersService.confirmPayment(id, req.user.userId);
+    return this.ordersService.confirmPayment(id, req.user.userId, req.user.role);
   }
 }

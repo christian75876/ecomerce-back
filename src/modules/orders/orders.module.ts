@@ -6,6 +6,7 @@ import { OrdersService } from './orders.service';
 import { OrdersScheduler } from './orders.scheduler';
 import { Customer } from '../customers/entities/customer.entity';
 import { Product } from '../products/entities/product.entity';
+import { Store } from '../stores/entities/store.entity';
 import { Order } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { InventoryModule } from '../inventory/inventory.module';
@@ -18,7 +19,7 @@ import { PushModule } from '../push/push.module';
 @Module({
   imports: [
     ScheduleModule.forRoot(),
-    TypeOrmModule.forFeature([Customer, Product, Order, OrderItem]),
+    TypeOrmModule.forFeature([Customer, Product, Store, Order, OrderItem]),
     InventoryModule,
     CustomersModule,
     NotificationsModule,

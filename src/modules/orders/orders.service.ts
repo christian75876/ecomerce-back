@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { Customer } from '../customers/entities/customer.entity';
@@ -24,6 +24,8 @@ export class OrdersService {
     private readonly customersRepository: Repository<Customer>,
     @InjectRepository(Product)
     private readonly productsRepository: Repository<Product>,
+    @InjectRepository(Store)
+    private readonly storesRepository: Repository<Store>,
     @InjectRepository(Order)
     private readonly ordersRepository: Repository<Order>,
     @InjectRepository(OrderItem)
@@ -35,7 +37,7 @@ export class OrdersService {
     private readonly pushService: PushService,
   ) {}
 
-  async findAll(storeId?: string, page = 1, limit = 20, status?: string, search?: string, paymentStatus?: string) {
+  async findAll(storeId?: string, page = 1, limit = 20, status?: string, search?: string, paymentStatus?: string, requestingUserId?: number, role?: string) {
     const take = Math.min(Math.max(limit, 1), 100);
     const safePage = Math.max(page, 1);
     const skip = (safePage - 1) * take;
@@ -49,8 +51,24 @@ export class OrdersService {
       .take(take)
       .skip(skip);
 
-    // Filter by store using EXISTS to avoid duplicate rows from item joins
-    if (storeId) {
+    // Sellers must see only their own stores; ignore any storeId they might pass
+    if (role && role !== 'admin' && requestingUserId) {
+      const sellerStores = await this.storesRepository.find({
+        where: { userId: requestingUserId },
+        select: ['id'],
+      });
+      const sellerStoreIds = sellerStores.map((s) => s.id);
+      if (sellerStoreIds.length === 0) return { items: [], total: 0, page, limit, totalPages: 0 };
+      qb.andWhere(
+        `EXISTS (
+          SELECT 1 FROM order_items oi
+          JOIN products p ON oi.product_id = p.id
+          WHERE oi.order_id = order.id AND p.store_id IN (:...sellerStoreIds)
+        )`,
+        { sellerStoreIds },
+      );
+    } else if (storeId) {
+      // Admin can filter by a specific storeId
       qb.andWhere(
         `EXISTS (
           SELECT 1 FROM order_items oi
@@ -107,13 +125,16 @@ export class OrdersService {
     });
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, requestingUserId?: number, role?: string) {
     const order = await this.ordersRepository.findOne({
       where: { id },
       relations: { items: { product: true } },
     });
     if (!order) {
       throw new NotFoundException('Order not found');
+    }
+    if (role && role !== 'admin' && requestingUserId) {
+      await this.verifyOrderAccess(order, requestingUserId);
     }
     return order;
   }
@@ -167,7 +188,7 @@ export class OrdersService {
           throw new BadRequestException('One of the selected products is invalid');
         }
 
-        const stock = await this.inventoryService.getCurrentStock(product.id);
+        const stock = await this.inventoryService.getCurrentStock(product.id, manager);
         if (stock < item.quantity) {
           throw new BadRequestException(
             `Insufficient stock for product ${product.name}`,
@@ -290,8 +311,11 @@ export class OrdersService {
     return this.ordersRepository.save(order);
   }
 
-  async confirmPayment(id: string, confirmedByUserId: number) {
+  async confirmPayment(id: string, confirmedByUserId: number, role?: string) {
     const order = await this.findOne(id);
+    if (role && role !== 'admin') {
+      await this.verifyOrderAccess(order, confirmedByUserId);
+    }
     if (order.paymentConfirmedAt) {
       return order;
     }
@@ -324,6 +348,20 @@ export class OrdersService {
       void this.notifyCustomerStatusChange(order).catch(() => null);
     }
     return staleOrders.length;
+  }
+
+  private async verifyOrderAccess(order: Order, userId: number): Promise<void> {
+    const storeIds = (order.items ?? [])
+      .map((item) => item.product?.storeId)
+      .filter((sid): sid is string => Boolean(sid));
+
+    if (storeIds.length === 0) throw new ForbiddenException('Acceso denegado');
+
+    const count = await this.storesRepository.count({
+      where: { id: In(storeIds), userId },
+    });
+
+    if (count === 0) throw new ForbiddenException('Acceso denegado');
   }
 
   private async resolveCustomer(
@@ -392,8 +430,11 @@ export class OrdersService {
     }
   }
 
-  async updateStatus(id: string, updateOrderStatusDto: UpdateOrderStatusDto) {
+  async updateStatus(id: string, updateOrderStatusDto: UpdateOrderStatusDto, requestingUserId?: number, role?: string) {
     const order = await this.findOne(id);
+    if (role && role !== 'admin' && requestingUserId) {
+      await this.verifyOrderAccess(order, requestingUserId);
+    }
     this.validateTransition(order.status, updateOrderStatusDto.status);
 
     if (

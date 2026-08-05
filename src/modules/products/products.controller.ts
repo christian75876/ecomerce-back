@@ -103,8 +103,9 @@ export class ProductsController {
   async update(
     @Param('id') id: string,
     @Body() updateProductDto: UpdateProductDto,
+    @Req() req: Request & { user: { userId: number; role: string } },
   ) {
-    return this.productsService.update(id, updateProductDto);
+    return this.productsService.update(id, updateProductDto, req.user.userId, req.user.role);
   }
 
   @Delete(':id')
@@ -120,8 +121,9 @@ export class ProductsController {
   async updateStatus(
     @Param('id') id: string,
     @Body() updateProductStatusDto: UpdateProductStatusDto,
+    @Req() req: Request & { user: { userId: number; role: string } },
   ) {
-    return this.productsService.updateStatus(id, updateProductStatusDto);
+    return this.productsService.updateStatus(id, updateProductStatusDto, req.user.userId, req.user.role);
   }
 
   @Post(':id/image')

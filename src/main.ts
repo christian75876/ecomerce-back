@@ -24,6 +24,8 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { Logger as logger } from '@nestjs/common';
 import { join } from 'path';
+import { Request, Response, NextFunction } from 'express';
+import * as jwt from 'jsonwebtoken';
 import 'reflect-metadata';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { HttpErrorFilter } from './common/filters/error.filter';
@@ -32,6 +34,19 @@ import { setupSwagger } from './common/swagger.config';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Protect payment evidence files — require a valid JWT before serving
+  app.use('/uploads/payment-evidence', (req: Request, res: Response, next: NextFunction) => {
+    const token = (req.headers.authorization ?? '').replace(/^Bearer\s+/i, '');
+    if (!token) return res.status(401).json({ message: 'Unauthorized' });
+    try {
+      jwt.verify(token, process.env.JWT_SECRET ?? '');
+      next();
+    } catch {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+  });
+
   app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads' });
   const port = Number(process.env.PORT || 3000);
   app.setGlobalPrefix('api', { exclude: ['sitemap.xml'] });

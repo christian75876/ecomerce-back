@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -419,8 +420,15 @@ export class ProductsService {
     });
   }
 
-  async update(id: string, updateProductDto: UpdateProductDto) {
+  async update(id: string, updateProductDto: UpdateProductDto, requestingUserId?: number, role?: string) {
     const product = await this.findEntity(id);
+
+    if (role && role !== 'admin' && requestingUserId) {
+      const store = await this.storesRepository.findOne({ where: { id: product.storeId } });
+      if (!store || store.userId !== requestingUserId) {
+        throw new ForbiddenException('No tienes permisos para editar este producto');
+      }
+    }
 
     if (updateProductDto.categoryId) {
       await this.ensureCategoryExists(updateProductDto.categoryId);
@@ -481,8 +489,14 @@ export class ProductsService {
     return this.productsRepository.save(product);
   }
 
-  async updateStatus(id: string, updateStatusDto: UpdateProductStatusDto) {
+  async updateStatus(id: string, updateStatusDto: UpdateProductStatusDto, requestingUserId?: number, role?: string) {
     const product = await this.findEntity(id);
+    if (role && role !== 'admin' && requestingUserId) {
+      const store = await this.storesRepository.findOne({ where: { id: product.storeId } });
+      if (!store || store.userId !== requestingUserId) {
+        throw new ForbiddenException('No tienes permisos para editar este producto');
+      }
+    }
     product.isActive = updateStatusDto.isActive;
     return this.productsRepository.save(product);
   }

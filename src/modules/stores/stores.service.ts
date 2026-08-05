@@ -33,10 +33,11 @@ export class StoresService {
       where.subscriptionExpiresAt = Or(IsNull(), MoreThan(new Date()));
     }
 
-    return this.storesRepository.find({
+    const stores = await this.storesRepository.find({
       where,
       order: { createdAt: 'DESC' },
     });
+    return stores.map(({ wppApiKey: _omit, ...rest }) => rest);
   }
 
   async findOneById(id: string) {
@@ -58,6 +59,11 @@ export class StoresService {
 
     if (publicOnly && store.subscriptionExpiresAt && new Date(store.subscriptionExpiresAt) < new Date()) {
       throw new NotFoundException('Tienda no encontrada');
+    }
+
+    if (publicOnly) {
+      const { wppApiKey: _omit, ...rest } = store;
+      return rest;
     }
 
     return store;

@@ -13,6 +13,8 @@ export class InventoryController {
   constructor(private readonly inventoryService: InventoryService) {}
 
   @Get()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'seller')
   async getInventorySummary(
     @Query('page') page?: string,
     @Query('limit') limit?: string,
@@ -26,6 +28,8 @@ export class InventoryController {
   }
 
   @Get('movements')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'seller')
   async getMovements(
     @Query('productId') productId?: string,
     @Query('page') page?: string,
@@ -39,11 +43,15 @@ export class InventoryController {
   }
 
   @Get('batches')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'seller')
   async getBatches(@Query() query: QueryInventoryBatchesDto) {
     return this.inventoryService.getBatches(query);
   }
 
   @Get('expiring')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'seller')
   async getExpiring(@Query() query: QueryExpiringInventoryDto) {
     return this.inventoryService.getExpiringBatches(query);
   }

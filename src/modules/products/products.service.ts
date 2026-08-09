@@ -107,11 +107,28 @@ export class ProductsService {
     if (filters.maxPrice !== undefined) {
       qb.andWhere('CAST(product.price AS numeric) <= :maxPrice', { maxPrice: filters.maxPrice });
     }
+    if (filters.sponsoredOnly) {
+      qb.andWhere('store.isPremiumAdvertiser = true').andWhere(
+        '(store.advertisingExpiresAt IS NULL OR store.advertisingExpiresAt > NOW())',
+      );
+    }
+    if (filters.onlyAvailable) {
+      qb.andWhere(
+        '(SELECT COALESCE(SUM(ib.available_quantity), 0) FROM inventory_batches ib WHERE ib.product_id = product.id) > 0',
+      );
+    }
 
     if (filters.sortBy === 'price_asc') qb.orderBy('product.price', 'ASC');
     else if (filters.sortBy === 'price_desc') qb.orderBy('product.price', 'DESC');
     else if (filters.sortBy === 'name_asc') qb.orderBy('product.name', 'ASC');
-    else qb.orderBy('product.createdAt', 'DESC');
+    else if (filters.sortBy === 'random') {
+      // Deterministic per-seed shuffle: same seed always yields the same order,
+      // so pagination stays consistent within a browsing session without
+      // favoring whichever store happened to register most recently.
+      qb.addSelect('MD5(product.id::text || :seed)', 'sort_key')
+        .setParameter('seed', filters.seed || 'default')
+        .orderBy('sort_key', 'ASC');
+    } else qb.orderBy('product.createdAt', 'DESC');
 
     const [products, totalItems] = await qb.skip(skip).take(limit).getManyAndCount();
 
@@ -312,7 +329,40 @@ export class ProductsService {
       });
     }
 
-    const items = Array.from(collected.values()).slice(0, limit);
+    // Guarantee one relevant sponsored placement, if an active advertiser has
+    // a product in a same-named category — mirrors the storefront fix: paid
+    // placement shouldn't depend on happening to land among the organic
+    // matches. Categories are per-store (each store owns its own category
+    // rows), so "relevant" is matched by category name rather than
+    // categoryId — an exact-id match could never cross stores. Capped to a
+    // single slot so it stays a relevant suggestion, not an ad takeover of
+    // the related-products rail. Same-store products are excluded since
+    // they'd already surface organically above.
+    const sponsoredCandidatesQuery = this.productsRepository
+      .createQueryBuilder('product')
+      .leftJoinAndSelect('product.category', 'category')
+      .leftJoinAndSelect('product.store', 'store')
+      .leftJoinAndSelect('product.supplier', 'supplier')
+      .leftJoinAndSelect('product.menuCategory', 'menuCategory')
+      .where('product.isActive = true')
+      .andWhere('product.id != :productId', { productId: product.id })
+      .andWhere('LOWER(category.name) = LOWER(:categoryName)', { categoryName: product.category?.name ?? '' })
+      .andWhere('store.isPremiumAdvertiser = true')
+      .andWhere('(store.advertisingExpiresAt IS NULL OR store.advertisingExpiresAt > NOW())')
+      .orderBy('RANDOM()')
+      .limit(1);
+
+    if (product.storeId) {
+      sponsoredCandidatesQuery.andWhere('product.storeId != :storeId', { storeId: product.storeId });
+    }
+
+    const [sponsoredPick] = await sponsoredCandidatesQuery.getMany();
+
+    const organicItems = Array.from(collected.values()).filter((p) => p.id !== sponsoredPick?.id);
+    const items = sponsoredPick
+      ? [sponsoredPick, ...organicItems].slice(0, limit)
+      : organicItems.slice(0, limit);
+
     const variantsMap = await this.getVariantsMap(items.map((p) => p.id));
     return items.map((p) => ({ ...p, hasVariants: variantsMap.get(p.id) ?? false }));
   }

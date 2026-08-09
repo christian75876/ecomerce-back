@@ -15,6 +15,7 @@ import { memoryStorage } from 'multer';
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt.auth.guard';
 import { CreateReviewDto } from './dto/create-review.dto';
+import { CreateStoreReviewDto } from './dto/create-store-review.dto';
 import { ReviewsService } from './reviews.service';
 
 const allowedMimeTypes = new Set([
@@ -66,6 +67,36 @@ export class ReviewsController {
       req.user.userId,
       createReviewDto,
       files,
+    );
+  }
+
+  // ── Store reviews ────────────────────────────────────────────────────────────
+
+  @Get('stores/:storeId/reviews')
+  async getStoreReviews(@Param('storeId') storeId: string) {
+    return this.reviewsService.getStoreReviews(storeId);
+  }
+
+  @Get('stores/:storeId/reviews/me')
+  @UseGuards(JwtAuthGuard)
+  async getMyStoreReviewEligibility(
+    @Param('storeId') storeId: string,
+    @Req() req: Request & { user: { userId: number } },
+  ) {
+    return this.reviewsService.getStoreReviewEligibility(storeId, req.user.userId);
+  }
+
+  @Post('stores/:storeId/reviews')
+  @UseGuards(JwtAuthGuard)
+  async createStoreReview(
+    @Param('storeId') storeId: string,
+    @Body() createStoreReviewDto: CreateStoreReviewDto,
+    @Req() req: Request & { user: { userId: number } },
+  ) {
+    return this.reviewsService.createOrUpdateStoreReview(
+      storeId,
+      req.user.userId,
+      createStoreReviewDto,
     );
   }
 }

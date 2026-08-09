@@ -1,4 +1,5 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
+import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt.auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
@@ -12,12 +13,15 @@ export class DashboardController {
   constructor(private readonly dashboardService: DashboardService) {}
 
   @Get('summary')
-  async getSummary() {
-    return this.dashboardService.getSummary();
+  async getSummary(@Req() req: Request & { user: { userId: number; role: string } }) {
+    return this.dashboardService.getSummary(req.user.userId, req.user.role);
   }
 
   @Get('analytics')
-  async getAnalytics(@Query() query: QueryDashboardAnalyticsDto) {
-    return this.dashboardService.getAnalytics(query);
+  async getAnalytics(
+    @Query() query: QueryDashboardAnalyticsDto,
+    @Req() req: Request & { user: { userId: number; role: string } },
+  ) {
+    return this.dashboardService.getAnalytics(query, req.user.userId, req.user.role);
   }
 }

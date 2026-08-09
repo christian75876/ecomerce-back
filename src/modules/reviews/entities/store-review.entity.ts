@@ -4,17 +4,19 @@ import {
   Entity,
   JoinColumn,
   ManyToOne,
-  OneToMany,
   PrimaryGeneratedColumn,
+  Unique,
   UpdateDateColumn,
 } from 'typeorm';
 import { Customer } from '../../customers/entities/customer.entity';
-import { Product } from '../../products/entities/product.entity';
+import { Store } from '../../stores/entities/store.entity';
 import { Order } from '../../orders/entities/order.entity';
-import { ReviewImage } from './review-image.entity';
 
-@Entity('reviews')
-export class Review {
+// One review per customer per completed order — a store's rating measures
+// the seller/service experience per delivery, not per product (see Review).
+@Entity('store_reviews')
+@Unique(['customerId', 'orderId'])
+export class StoreReview {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -25,12 +27,12 @@ export class Review {
   @JoinColumn({ name: 'customer_id' })
   customer: Customer;
 
-  @Column({ name: 'product_id', type: 'uuid' })
-  productId: string;
+  @Column({ name: 'store_id', type: 'uuid' })
+  storeId: string;
 
-  @ManyToOne(() => Product, { eager: true })
-  @JoinColumn({ name: 'product_id' })
-  product: Product;
+  @ManyToOne(() => Store, { eager: false })
+  @JoinColumn({ name: 'store_id' })
+  store: Store;
 
   @Column({ name: 'order_id', type: 'uuid' })
   orderId: string;
@@ -47,12 +49,6 @@ export class Review {
 
   @Column({ name: 'is_visible', type: 'boolean', default: true })
   isVisible: boolean;
-
-  @OneToMany(() => ReviewImage, (reviewImage) => reviewImage.review, {
-    cascade: true,
-    eager: true,
-  })
-  images: ReviewImage[];
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;

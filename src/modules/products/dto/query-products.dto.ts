@@ -25,6 +25,15 @@ export class QueryProductsDto extends PaginationQueryDto {
   sortBy?: string;
 
   @IsOptional()
+  @IsString()
+  seed?: string;
+
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  sponsoredOnly?: boolean;
+
+  @IsOptional()
   @Type(() => Number)
   @IsNumber()
   minPrice?: number;
@@ -33,4 +42,9 @@ export class QueryProductsDto extends PaginationQueryDto {
   @Type(() => Number)
   @IsNumber()
   maxPrice?: number;
+
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  onlyAvailable?: boolean;
 }

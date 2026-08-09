@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { StoreAdvertisement } from './entities/store-advertisement.entity';
 import { Store } from '../stores/entities/store.entity';
 import { CreateAdvertisementDto } from './dto/create-advertisement.dto';
@@ -172,5 +172,38 @@ export class AdvertisingService {
     });
 
     return saved;
+  }
+
+  // ── Expire overdue advertisements (scheduled) ─────────────────────────────────
+  // `isPremiumAdvertiser` otherwise never turns itself off — the various
+  // product/catalog queries defensively re-check `advertisingExpiresAt`, but
+  // the flag itself (and the admin dashboard's ACTIVE/EXPIRED status, which
+  // reads that flag directly) would stay "active" forever without this.
+  async expireOverdueAdvertisements(): Promise<number> {
+    const now = new Date();
+
+    const overdueStores = await this.storesRepository.find({
+      where: { isPremiumAdvertiser: true },
+    });
+    const expiredStoreIds = overdueStores
+      .filter((s) => s.advertisingExpiresAt && new Date(s.advertisingExpiresAt) <= now)
+      .map((s) => s.id);
+
+    if (expiredStoreIds.length === 0) return 0;
+
+    await this.storesRepository.update(
+      { id: In(expiredStoreIds) },
+      { isPremiumAdvertiser: false },
+    );
+
+    await this.adsRepository
+      .createQueryBuilder()
+      .update(StoreAdvertisement)
+      .set({ status: 'EXPIRED' })
+      .where('store_id IN (:...ids)', { ids: expiredStoreIds })
+      .andWhere('status = :status', { status: 'ACTIVE' })
+      .execute();
+
+    return expiredStoreIds.length;
   }
 }

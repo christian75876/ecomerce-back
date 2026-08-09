@@ -49,7 +49,7 @@ export class DashboardService {
     private readonly storesRepository: Repository<Store>,
   ) {}
 
-  async getSummary() {
+  async getSummary(requestingUserId?: number, role?: string) {
     const endDate = new Date();
     const startDate = new Date();
     startDate.setDate(endDate.getDate() - 6);
@@ -60,7 +60,7 @@ export class DashboardService {
       endDate: endDate.toISOString(),
       criticalStockThreshold: 5,
       rotationDays: 30,
-    });
+    }, requestingUserId, role);
 
     return {
       totalProducts: analytics.kpis.totalProducts,
@@ -75,7 +75,7 @@ export class DashboardService {
     };
   }
 
-  async getAnalytics(query: QueryDashboardAnalyticsDto) {
+  async getAnalytics(query: QueryDashboardAnalyticsDto, requestingUserId?: number, role?: string) {
     const criticalStockThreshold = query.criticalStockThreshold ?? 5;
     const rotationDays = query.rotationDays ?? 30;
     // Date-only strings ("YYYY-MM-DD") are parsed as UTC midnight by the JS engine,
@@ -90,7 +90,7 @@ export class DashboardService {
     startDate.setHours(0, 0, 0, 0);
     endDate.setHours(23, 59, 59, 999);
 
-    const [
+    let [
       products,
       orders,
       sales,
@@ -121,6 +121,38 @@ export class DashboardService {
       this.cashMovementsRepository.find({ order: { createdAt: 'DESC' } }),
       this.storesRepository.find({ order: { name: 'ASC' } }),
     ]);
+
+    // Sellers must only ever see their own store(s) — ignore any storeId they
+    // might pass and hard-scope every raw collection before it flows into the
+    // (unchanged) filtering logic below. Without this, any authenticated
+    // seller could read platform-wide analytics (revenue, inventory, debt)
+    // across every other store, including ones they have no relation to.
+    if (role && role !== 'admin') {
+      const sellerStores = await this.storesRepository.find({
+        where: { userId: requestingUserId },
+        select: ['id'],
+      });
+      const sellerStoreIds = new Set(sellerStores.map((s) => s.id));
+      // Reflect the seller's own store back in the response (used by the UI
+      // to label the dashboard) — never the client-supplied value.
+      query.storeId = sellerStores.length === 1 ? sellerStores[0].id : undefined;
+
+      products = products.filter((p) => p.storeId && sellerStoreIds.has(p.storeId));
+      const scopedProductIds = new Set(products.map((p) => p.id));
+      orders = orders.filter((o) =>
+        o.items.some((item) => item.product?.storeId && sellerStoreIds.has(item.product.storeId)),
+      );
+      sales = sales.filter((s) => s.storeId && sellerStoreIds.has(s.storeId));
+      movements = movements.filter((m) => scopedProductIds.has(m.productId));
+      batches = batches.filter((b) => scopedProductIds.has(b.productId));
+      purchases = purchases.filter((p) => p.storeId && sellerStoreIds.has(p.storeId));
+      customers = customers.filter((c) => c.storeId && sellerStoreIds.has(c.storeId));
+      customerLedgerEntries = customerLedgerEntries.filter(
+        (e) => e.customer?.storeId && sellerStoreIds.has(e.customer.storeId),
+      );
+      cashSessions = cashSessions.filter((c) => c.storeId && sellerStoreIds.has(c.storeId));
+      stores = stores.filter((s) => sellerStoreIds.has(s.id));
+    }
 
     const filteredProducts = products.filter(
       (product) => !query.storeId || !product.storeId || product.storeId === query.storeId,

@@ -37,7 +37,13 @@ export class StoresService {
       where,
       order: { createdAt: 'DESC' },
     });
-    return stores.map(({ wppApiKey: _omit, email: _email, ...rest }) => rest);
+
+    const ratingMap = await this.getStoreRatingMap(stores.map((s) => s.id));
+    return stores.map(({ wppApiKey: _omit, email: _email, ...rest }) => ({
+      ...rest,
+      averageRating: ratingMap.get(rest.id)?.averageRating ?? null,
+      reviewCount: ratingMap.get(rest.id)?.reviewCount ?? 0,
+    }));
   }
 
   async findOneById(id: string) {
@@ -61,12 +67,18 @@ export class StoresService {
       throw new NotFoundException('Tienda no encontrada');
     }
 
+    const ratingMap = await this.getStoreRatingMap([store.id]);
+    const rating = {
+      averageRating: ratingMap.get(store.id)?.averageRating ?? null,
+      reviewCount: ratingMap.get(store.id)?.reviewCount ?? 0,
+    };
+
     if (publicOnly) {
       const { wppApiKey: _omit, email: _email, ...rest } = store;
-      return rest;
+      return { ...rest, ...rating };
     }
 
-    return store;
+    return { ...store, ...rating };
   }
 
   async findMine(userId: number) {
@@ -287,6 +299,61 @@ export class StoresService {
     if (!store) throw new NotFoundException('Tienda no encontrada');
     if (!isAdmin && store.userId !== userId) throw new ForbiddenException('No tienes permiso');
     return store;
+  }
+
+  // Prefers real store reviews (rates the seller/service experience on a
+  // delivered order — see StoreReview) when a store has any. Stores with no
+  // direct reviews yet fall back to the v1 stand-in: the average of their own
+  // products' reviews, which measures product quality, not service, but is
+  // better than showing nothing.
+  private async getStoreRatingMap(
+    storeIds: string[],
+  ): Promise<Map<string, { averageRating: number; reviewCount: number }>> {
+    if (storeIds.length === 0) return new Map();
+
+    const map = new Map<string, { averageRating: number; reviewCount: number }>();
+
+    const directRows = await this.storesRepository.manager
+      .createQueryBuilder()
+      .select('review.store_id', 'storeId')
+      .addSelect('ROUND(AVG(review.rating)::numeric, 1)', 'averageRating')
+      .addSelect('COUNT(review.id)::int', 'reviewCount')
+      .from('store_reviews', 'review')
+      .where('review.store_id IN (:...ids)', { ids: storeIds })
+      .andWhere('review.is_visible = :visible', { visible: true })
+      .groupBy('review.store_id')
+      .getRawMany<{ storeId: string; averageRating: string; reviewCount: number }>();
+
+    directRows.forEach((row) => {
+      map.set(row.storeId, {
+        averageRating: Number(row.averageRating),
+        reviewCount: row.reviewCount,
+      });
+    });
+
+    const fallbackIds = storeIds.filter((id) => !map.has(id));
+    if (fallbackIds.length > 0) {
+      const fallbackRows = await this.storesRepository.manager
+        .createQueryBuilder()
+        .select('product.store_id', 'storeId')
+        .addSelect('ROUND(AVG(review.rating)::numeric, 1)', 'averageRating')
+        .addSelect('COUNT(review.id)::int', 'reviewCount')
+        .from('reviews', 'review')
+        .innerJoin('products', 'product', 'product.id = review.product_id')
+        .where('product.store_id IN (:...ids)', { ids: fallbackIds })
+        .andWhere('review.is_visible = :visible', { visible: true })
+        .groupBy('product.store_id')
+        .getRawMany<{ storeId: string; averageRating: string; reviewCount: number }>();
+
+      fallbackRows.forEach((row) => {
+        map.set(row.storeId, {
+          averageRating: Number(row.averageRating),
+          reviewCount: row.reviewCount,
+        });
+      });
+    }
+
+    return map;
   }
 
   private async ensureUniqueSlug(slug: string, currentStoreId?: string) {

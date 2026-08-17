@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -364,5 +365,100 @@ export class StoresService {
     if (existingStore && existingStore.id !== currentStoreId) {
       throw new ConflictException('La URL de la tienda ya está en uso');
     }
+  }
+
+  /**
+   * Hard delete — admin only. Blocked if the store has any real order history
+   * (via order_items → products), so a paid transaction can never be erased by
+   * mistake. Use `update(..., { isActive: false })` for anything that has sold.
+   */
+  async remove(id: string): Promise<{ message: string }> {
+    const store = await this.storesRepository.findOne({ where: { id } });
+    if (!store) throw new NotFoundException('Tienda no encontrada');
+
+    const [{ count }] = await this.storesRepository.manager.query(
+      `SELECT COUNT(*)::int AS count
+       FROM order_items oi
+       JOIN products p ON oi.product_id = p.id
+       WHERE p.store_id = $1`,
+      [id],
+    );
+    if (Number(count) > 0) {
+      throw new BadRequestException(
+        'Esta tienda tiene pedidos asociados y no se puede eliminar — desactívala en su lugar para conservar el historial.',
+      );
+    }
+
+    await this.storesRepository.manager.transaction(async (manager) => {
+      // Product-scoped rows first (all RESTRICT, no cascade at the DB level)
+      await manager.query(
+        `DELETE FROM review_images WHERE review_id IN (
+           SELECT id FROM reviews WHERE product_id IN (SELECT id FROM products WHERE store_id = $1)
+         )`,
+        [id],
+      );
+      await manager.query(
+        `DELETE FROM reviews WHERE product_id IN (SELECT id FROM products WHERE store_id = $1)`,
+        [id],
+      );
+      await manager.query(
+        `DELETE FROM product_favorites WHERE product_id IN (SELECT id FROM products WHERE store_id = $1)`,
+        [id],
+      );
+      await manager.query(
+        `DELETE FROM sale_items WHERE product_id IN (SELECT id FROM products WHERE store_id = $1)`,
+        [id],
+      );
+      await manager.query(
+        `DELETE FROM purchase_items WHERE product_id IN (SELECT id FROM products WHERE store_id = $1)`,
+        [id],
+      );
+      await manager.query(
+        `DELETE FROM inventory_batch_allocations WHERE product_id IN (SELECT id FROM products WHERE store_id = $1)`,
+        [id],
+      );
+      await manager.query(
+        `DELETE FROM inventory_movements WHERE product_id IN (SELECT id FROM products WHERE store_id = $1)`,
+        [id],
+      );
+      await manager.query(
+        `DELETE FROM inventory_batches WHERE product_id IN (SELECT id FROM products WHERE store_id = $1) OR store_id = $1`,
+        [id],
+      );
+      // product_images / product_videos / product_variants cascade automatically at the DB level
+      await manager.query(`DELETE FROM products WHERE store_id = $1`, [id]);
+
+      // Store-scoped rows
+      await manager.query(
+        `DELETE FROM cash_movements WHERE cash_session_id IN (SELECT id FROM cash_sessions WHERE store_id = $1)`,
+        [id],
+      );
+      await manager.query(`DELETE FROM cash_sessions WHERE store_id = $1`, [id]);
+      await manager.query(
+        `DELETE FROM sale_items WHERE sale_id IN (SELECT id FROM sales WHERE store_id = $1)`,
+        [id],
+      );
+      await manager.query(`DELETE FROM sales WHERE store_id = $1`, [id]);
+      await manager.query(
+        `DELETE FROM purchase_payments WHERE purchase_id IN (SELECT id FROM purchases WHERE store_id = $1)`,
+        [id],
+      );
+      await manager.query(
+        `DELETE FROM purchase_items WHERE purchase_id IN (SELECT id FROM purchases WHERE store_id = $1)`,
+        [id],
+      );
+      await manager.query(`DELETE FROM purchases WHERE store_id = $1`, [id]);
+      await manager.query(`DELETE FROM suppliers WHERE store_id = $1`, [id]);
+      await manager.query(`DELETE FROM store_reviews WHERE store_id = $1`, [id]);
+      await manager.query(
+        `DELETE FROM customer_ledger_entries WHERE customer_id IN (SELECT id FROM customers WHERE store_id = $1)`,
+        [id],
+      );
+      await manager.query(`DELETE FROM customers WHERE store_id = $1`, [id]);
+      // menu_categories / store_advertisements / store_subscriptions / categories cascade automatically
+      await manager.query(`DELETE FROM stores WHERE id = $1`, [id]);
+    });
+
+    return { message: 'Tienda eliminada correctamente' };
   }
 }

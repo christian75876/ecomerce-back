@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -76,6 +77,13 @@ export class StoresController {
   async update(@Param('id') id: string, @Body() payload: UpdateStoreDto, @Req() req: any) {
     const isAdmin = req.user.role === 'admin';
     return this.storesService.update(id, payload, req.user.userId as number, isAdmin);
+  }
+
+  @Delete(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  async remove(@Param('id') id: string) {
+    return this.storesService.remove(id);
   }
 
   @Patch(':id/notifications')

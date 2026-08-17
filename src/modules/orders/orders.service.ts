@@ -4,6 +4,7 @@ import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { Customer } from '../customers/entities/customer.entity';
 import { Product } from '../products/entities/product.entity';
 import { Store } from '../stores/entities/store.entity';
+import { User } from '../users/entities/user.entity';
 import { InventoryService } from '../inventory/inventory.service';
 import { Order, OrderStatus, PaymentStatus } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
@@ -354,6 +355,40 @@ export class OrdersService {
       void this.notifyCustomerStatusChange(order).catch(() => null);
     }
     return staleOrders.length;
+  }
+
+  /** Used by the /uploads/payment-evidence static middleware in main.ts — JWT alone doesn't prove the requester owns this order. */
+  async canAccessPaymentEvidence(filename: string, userId: number): Promise<boolean> {
+    const evidencePath = `uploads/payment-evidence/${filename}`;
+    const order = await this.ordersRepository.findOne({
+      where: { paymentEvidenceImagePath: evidencePath },
+      relations: { items: { product: true } },
+    });
+    if (!order) return false;
+
+    const user = await this.dataSource.getRepository(User).findOne({
+      where: { id: userId },
+      relations: { role: true },
+    });
+    if (user?.role?.name === 'admin') return true;
+
+    const orderCustomer = await this.customersRepository.findOne({ where: { id: order.customerId } });
+    if (orderCustomer?.userId === userId) return true;
+
+    // Same rule as findMine/findMyOne: a customer created before the buyer had an
+    // account (orphan, matched only by email) still counts as "their" order.
+    if (orderCustomer) {
+      const requestingCustomer = await this.customersRepository.findOne({ where: { userId } });
+      if (requestingCustomer && requestingCustomer.email === orderCustomer.email) return true;
+    }
+
+    const storeIds = (order.items ?? [])
+      .map((item) => item.product?.storeId)
+      .filter((sid): sid is string => Boolean(sid));
+    if (storeIds.length === 0) return false;
+
+    const ownsStore = await this.storesRepository.count({ where: { id: In(storeIds), userId } });
+    return ownsStore > 0;
   }
 
   private async verifyOrderAccess(order: Order, userId: number): Promise<void> {

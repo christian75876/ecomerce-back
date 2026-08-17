@@ -43,7 +43,7 @@ export class PurchasesService {
     private readonly cloudinaryService: CloudinaryService,
   ) {}
 
-  async findAll(query: QueryPurchasesDto) {
+  async findAll(query: QueryPurchasesDto, requestingUserId?: number, role?: string) {
     const page = query.page ?? 1;
     const limit = query.limit ?? 10;
     const builder = this.purchasesRepository
@@ -55,6 +55,15 @@ export class PurchasesService {
       .leftJoinAndSelect('purchase.payments', 'payments')
       .orderBy('purchase.purchaseDate', 'DESC')
       .addOrderBy('purchase.createdAt', 'DESC');
+
+    // Sellers only see purchases (and their receipt images) for stores they own.
+    if (role && role !== 'admin' && requestingUserId) {
+      const sellerStoreIds = await this.getSellerStoreIds(requestingUserId);
+      if (sellerStoreIds.length === 0) {
+        return { items: [], pagination: { totalItems: 0, itemCount: 0, itemsPerPage: limit, totalPages: 1, currentPage: page } };
+      }
+      builder.andWhere('purchase.storeId IN (:...sellerStoreIds)', { sellerStoreIds });
+    }
 
     if (query.search?.trim()) {
       builder.andWhere(
@@ -111,8 +120,16 @@ export class PurchasesService {
     };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, requestingUserId?: number, role?: string) {
     const purchase = await this.findPurchaseOrFail(id);
+
+    if (role && role !== 'admin' && requestingUserId) {
+      const sellerStoreIds = await this.getSellerStoreIds(requestingUserId);
+      if (!sellerStoreIds.includes(purchase.storeId)) {
+        throw new NotFoundException('Purchase not found');
+      }
+    }
+
     const cancelability = await this.getCancelability(purchase.id);
 
     return this.serializePurchase(purchase, cancelability);
@@ -332,6 +349,11 @@ export class PurchasesService {
     });
 
     return this.findOne(id);
+  }
+
+  private async getSellerStoreIds(userId: number): Promise<string[]> {
+    const stores = await this.storesRepository.find({ where: { userId }, select: ['id'] });
+    return stores.map((s) => s.id);
   }
 
   private async findPurchaseOrFail(id: string) {

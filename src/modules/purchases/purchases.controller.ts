@@ -7,19 +7,25 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Request } from 'express';
 import { PurchasesService } from './purchases.service';
 import { JwtAuthGuard } from '../auth/guards/jwt.auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from 'src/common/decorators/roles.decorator';
 import { CreatePurchaseDto } from './dto/create-purchase.dto';
 import { RegisterPurchasePaymentDto } from './dto/register-purchase-payment.dto';
 import { UpdatePurchaseDto } from './dto/update-purchase.dto';
 import { CancelPurchaseDto } from './dto/cancel-purchase.dto';
 import { QueryPurchasesDto } from './dto/query-purchases.dto';
 import { memoryStorage } from 'multer';
+
+type AuthedRequest = Request & { user: { userId: number; role: string } };
 
 const allowedReceiptMimeTypes = new Set([
   'image/jpeg',
@@ -28,18 +34,19 @@ const allowedReceiptMimeTypes = new Set([
 ]);
 
 @Controller('purchases')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('admin', 'seller')
 export class PurchasesController {
   constructor(private readonly purchasesService: PurchasesService) {}
 
   @Get()
-  async findAll(@Query() query: QueryPurchasesDto) {
-    return this.purchasesService.findAll(query);
+  async findAll(@Query() query: QueryPurchasesDto, @Req() req: AuthedRequest) {
+    return this.purchasesService.findAll(query, req.user.userId, req.user.role);
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string) {
-    return this.purchasesService.findOne(id);
+  async findOne(@Param('id') id: string, @Req() req: AuthedRequest) {
+    return this.purchasesService.findOne(id, req.user.userId, req.user.role);
   }
 
   @Post()

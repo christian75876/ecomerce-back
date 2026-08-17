@@ -11,6 +11,8 @@ export class StoreSeederService {
   ) {}
 
   async ensureDefaultStore() {
+    if (process.env.SEED_DEFAULT_STORE !== 'true') return;
+
     const existing = await this.storesRepository.findOne({
       where: { slug: 'hot-default' },
     });

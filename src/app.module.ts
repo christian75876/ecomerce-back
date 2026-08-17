@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { AppController } from './app.controller';
 import { DatabaseModule } from './modules/database/database.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AppInitializer } from './app.initializer';
@@ -65,6 +66,7 @@ import { OgPreviewModule } from './modules/og-preview/og-preview.module';
     SitemapModule,
     OgPreviewModule,
   ],
+  controllers: [AppController],
   providers: [
     AppInitializer,
     RoleSeederService,

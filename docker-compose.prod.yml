@@ -1,0 +1,67 @@
+services:
+  db:
+    image: postgres:16
+    container_name: merku_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${USERNAME_DB}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+      POSTGRES_DB: ${DATABASE_NAME}
+    # No se publica el puerto al host — solo "app" lo alcanza por la red interna.
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${USERNAME_DB} -d ${DATABASE_NAME}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - merku_net
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: merku_backend
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${USERNAME_DB}:${DATABASE_PASSWORD}@db:5432/${DATABASE_NAME}
+    volumes:
+      - uploads:/app/uploads
+    # Sin "ports": el backend solo se alcanza a través de Caddy (reverse proxy con TLS).
+    networks:
+      - merku_net
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: merku_caddy
+    restart: always
+    depends_on:
+      - app
+    environment:
+      DOMAIN: ${DOMAIN}
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - merku_net
+
+networks:
+  merku_net:
+    driver: bridge
+
+volumes:
+  pgdata:
+  uploads:
+  caddy_data:
+  caddy_config:

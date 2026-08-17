@@ -91,7 +91,7 @@ export class OgPreviewController {
     const html = this.buildHtml({
       title: `${product.name} — Merku`,
       description,
-      image: product.imageUrl || `${frontendUrl}/og-image.svg`,
+      image: product.imageUrl || `${frontendUrl}/og-image.png`,
       type: 'product',
       url: spaUrl,
       spaUrl,
@@ -124,7 +124,7 @@ export class OgPreviewController {
     const description =
       store.description || `Explora los productos de ${store.name} en Merku.`;
     const image =
-      store.bannerUrl || store.logoUrl || `${frontendUrl}/og-image.svg`;
+      store.bannerUrl || store.logoUrl || `${frontendUrl}/og-image.png`;
 
     const html = this.buildHtml({
       title: `${store.name} — Merku`,

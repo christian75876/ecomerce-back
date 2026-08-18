@@ -1,173 +1,178 @@
-# Despliegue en Hetzner + Cloudflare (DNS-only) + Docker
+# Despliegue en Hetzner + Docker + Cloudflare/Porkbun
 
-Guía operativa para llevar este backend a un servidor Hetzner Cloud (2 vCPU / 4GB RAM,
-p. ej. CX22) usando el stack de `docker-compose.prod.yml` (Postgres + NestJS + Caddy con
-TLS automático), con Cloudflare únicamente como DNS (nube gris, sin proxy).
+Estado del entorno de producción y guía de mantenimiento. El backend ya está desplegado
+según lo descrito aquí — esta guía sirve para futuros redeploys y para entender cómo
+está armado.
 
-## 0. Antes de empezar
+## Estado actual
+
+- **Servidor**: Hetzner Cloud, CX23 (2 vCPU / 4GB RAM), Ubuntu 26.04 LTS, Nuremberg.
+  IP pública: `46.225.27.92` (fija mientras no se borre el servidor).
+- **Dominio backend**: `https://api.merku.co`, DNS gestionado en Porkbun (registro `A`
+  directo a la IP del servidor, sin proxy). Certificado TLS emitido automáticamente por
+  Caddy vía Let's Encrypt.
+- **Frontend**: Cloudflare Worker `merku` (`https://merku.christian75876.workers.dev`),
+  desplegado automáticamente vía Cloudflare Workers Builds al hacer push a `main` del
+  repo del frontend.
+- **Repo en el servidor**: `/opt/merku-backend`, clonado con una deploy key de solo
+  lectura (`merku-backend-prod` en GitHub → Settings → Deploy keys).
+- **Stack**: `docker-compose.prod.yml` (Postgres 16 + NestJS + Caddy), red interna
+  aislada, sin exponer el puerto de Postgres al host.
+
+## Antes de empezar (si se recrea el entorno desde cero)
 
 - No commitees nunca el `.env` real. `.gitignore`/`.dockerignore` ya lo excluyen.
 - Genera todos los secretos nuevos para este entorno (no reutilices los de Railway/dev).
 - Guarda el `.env` de producción solo en el servidor (permisos `600`) o en un gestor de
   secretos. No lo pegues en chats, tickets ni documentos compartidos.
 
-## 1. Crear el servidor en Hetzner
+## 1. Servidor (ya hecho)
 
-1. Crea un servidor Cloud (CX22 o equivalente 2 vCPU / 4GB), imagen **Ubuntu 24.04**,
-   región cercana a tus usuarios.
-2. Agrega tu llave SSH pública al crear el servidor (no uses contraseña).
-3. Anota la IP pública — la necesitas para el DNS y el firewall.
+Hetzner Console → proyecto `merku-prod` → servidor `merku-backend-prod` (CX23, Ubuntu,
+Nuremberg), con la SSH key `deploy@merku-backend`.
 
-### 1.1 Hardening inicial (por SSH, como root la primera vez)
+Hardening aplicado:
 
 ```bash
-adduser deploy
+# Usuario sin privilegios (deploy), con sudo interactivo
+adduser --disabled-password --gecos '' deploy
 usermod -aG sudo deploy
-# copia tu authorized_keys a /home/deploy/.ssh/authorized_keys
+mkdir -p /home/deploy/.ssh && cp /root/.ssh/authorized_keys /home/deploy/.ssh/
+chown -R deploy:deploy /home/deploy/.ssh && chmod 700 /home/deploy/.ssh && chmod 600 /home/deploy/.ssh/authorized_keys
 
-# Firewall: solo SSH, HTTP y HTTPS
+# Firewall: solo SSH, HTTP, HTTPS (reglas ANTES de activar)
 apt update && apt install -y ufw fail2ban
-ufw allow OpenSSH
-ufw allow 80/tcp
-ufw allow 443/tcp
-ufw enable
+ufw allow OpenSSH && ufw allow 80/tcp && ufw allow 443/tcp
+ufw --force enable
+systemctl enable --now fail2ban
 
-# Swap (recomendado en 4GB RAM: build de TS + Postgres + Node conviven mejor)
-fallocate -l 2G /swapfile
-chmod 600 /swapfile
-mkswap /swapfile
-swapon /swapfile
+# Swap 2GB (4GB RAM: Postgres + Node conviven mejor)
+fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
 echo '/swapfile none swap sw 0 0' >> /etc/fstab
 ```
 
-A partir de aquí, conéctate como `deploy`, no como `root`.
+> Nota: las tareas de administración se siguen ejecutando como `root` vía llave SSH
+> (Hetzner ya deshabilita login root por contraseña). `deploy` queda disponible con
+> sudo interactivo para trabajo manual del día a día.
 
-## 2. Instalar Docker
+## 2. Docker (ya hecho)
 
 ```bash
 curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker deploy
-# cierra sesión y vuelve a entrar para que el grupo tome efecto
-docker compose version
+usermod -aG docker deploy
 ```
 
-## 3. DNS en Cloudflare (modo DNS-only)
+## 3. Clonar el repo (ya hecho)
 
-Caddy emite el certificado TLS automáticamente contra Let's Encrypt vía HTTP-01, lo cual
-requiere que la petición llegue directo a tu servidor. Por eso el registro debe estar en
-**modo "DNS only" (nube gris)**, no proxied (naranja):
-
-1. En Cloudflare → DNS, crea un registro `A` con el subdominio del API
-   (p. ej. `api.tudominio.com`) → IP del servidor Hetzner.
-2. Verifica que el ícono de la nube esté **gris** (DNS only), no naranja.
-3. Espera propagación (`dig api.tudominio.com` debe devolver la IP del servidor).
-
-> Si más adelante quieres activar el proxy naranja de Cloudflare (WAF, caché, ocultar la
-> IP), hazlo **después** de que Caddy ya tenga el certificado emitido y funcionando, y
-> configura el modo SSL/TLS de Cloudflare en "Full (strict)".
-
-## 4. Clonar el repo y configurar `.env`
+Deploy key de solo lectura generada en el propio servidor y agregada en GitHub →
+Settings → Deploy keys (sin write access):
 
 ```bash
-git clone <url-del-repo> merku-backend
-cd merku-backend
-cp .env.example .env
-nano .env
+ssh-keygen -t ed25519 -C "merku-backend-prod-deploy" -f /root/.ssh/repo_deploy_key -N ""
+# pegar /root/.ssh/repo_deploy_key.pub en GitHub → Deploy keys
+
+GIT_SSH_COMMAND='ssh -i /root/.ssh/repo_deploy_key -o IdentitiesOnly=yes' \
+  git clone git@github.com:christian75876/ecomerce-back.git /opt/merku-backend
 ```
 
-Completa en el `.env` real (valores de ejemplo a reemplazar):
+## 4. `.env` de producción (ya hecho)
 
-| Variable | Cómo generarla |
-|---|---|
-| `USERNAME_DB` / `DATABASE_PASSWORD` / `DATABASE_NAME` | valores fuertes, propios de este entorno |
-| `JWT_SECRET` | `openssl rand -hex 32` |
-| `ADMIN_EMAIL` / `ADMIN_PASSWORD_HASH` | `node -e "console.log(require('bcrypt').hashSync('tu-password', 10))"` — **recuerda escapar cada `$` como `$$`** en este `.env` porque lo usa `docker-compose.prod.yml` vía `env_file` |
-| `DOMAIN` | el subdominio del backend, p. ej. `api.merku.co` (mientras `merku.co` no esté aprobado, usa el dominio/subdominio que sí tengas activo) |
-| `ALLOWED_ORIGINS` | orígenes del frontend, sin slash final. Hoy: `https://merku.christian75876.workers.dev`. Cuando `merku.co` se apruebe, añade `https://merku.co,https://www.merku.co` (separados por coma, sin espacios) |
-| `SMTP_*`, `CLOUDINARY_*`, `BREVO_API_KEY`, `VAPID_*`, `SENTRY_DSN`, `TURNSTILE_SECRET_KEY` | credenciales reales de cada servicio |
-| `DB_SSL` | déjalo en `false` — Postgres corre en el mismo docker-compose, no es una DB en la nube |
+`cp .env.example .env` y se completó con: credenciales de DB generadas (no reutilizadas
+de dev), `JWT_SECRET` generado con `openssl rand -hex 32`, `DOMAIN=api.merku.co`,
+`ALLOWED_ORIGINS=https://merku.christian75876.workers.dev`, admin seed, SMTP (Brevo),
+Cloudinary, Brevo API key, VAPID keys. `SENTRY_DSN` y `TURNSTILE_SECRET_KEY` quedaron
+vacíos por ahora (ambos son opcionales — el código los omite limpiamente si no están
+configurados; se pueden agregar después sin rehacer el despliegue).
+
+Recuerda: el hash de `ADMIN_PASSWORD_HASH` va con cada `$` escapado como `$$` en este
+archivo, porque `docker-compose.prod.yml` lo inyecta vía `env_file`.
 
 ## 5. Migraciones de base de datos (TypeORM)
 
-Este proyecto corre con `DATABASE_SYNCHRONIZE=false` en producción: el esquema se
-gestiona con **migraciones versionadas de TypeORM**, no con sincronización automática.
-Se agregó el andamiaje en [src/database/data-source.ts](src/database/data-source.ts) y
-los scripts en `package.json` (`migration:generate`, `migration:run`, `migration:run:prod`).
+`DATABASE_SYNCHRONIZE=false` en producción — el esquema se gestiona con migraciones
+versionadas ([src/database/data-source.ts](src/database/data-source.ts) +
+`yarn migration:generate` / `migration:run` / `migration:run:prod` en `package.json`).
 
-### 5.1 Generar la migración base (una sola vez, pendiente)
+La migración base (`src/migrations/1787067006765-InitialSchema.ts`) ya se generó y
+aplicó contra la base de datos de producción (37 tablas + extensión `uuid-ossp`, que
+TypeORM crea automáticamente al ejecutar la migración).
 
-Como este entorno de desarrollo no tenía Docker/Postgres disponibles, **la migración
-base (`InitialSchema`) todavía no está generada**. Hazlo antes del primer despliegue,
-en tu máquina local con Docker o directamente en el servidor:
-
-```bash
-# Levanta solo la DB de desarrollo (vacía) y las envs para conectarte a ella
-docker compose up -d db
-export DATABASE_HOST=localhost PORT_DB=5432 USERNAME_DB=postgres DATABASE_PASSWORD=postgres DATABASE_NAME=postgres
-
-# Genera la migración a partir del estado actual de las entidades
-yarn migration:generate src/migrations/InitialSchema
-
-# Revisa el SQL generado antes de commitear
-cat src/migrations/*-InitialSchema.ts
-```
-
-Commitea el archivo generado en `src/migrations/`. A partir de ahí, cualquier cambio de
-entidad se versiona igual: `yarn migration:generate src/migrations/NombreDelCambio`.
-
-> Si vas a **migrar datos existentes** desde Railway (pg_dump/pg_restore) en vez de
-> arrancar con una base vacía, no ejecutes la migración base contra esos datos — la
-> tabla `migrations` debe marcarse manualmente como si ya se hubiera aplicado, para no
-> intentar recrear tablas que ya existen. Avísame si este es el caso y lo resolvemos
-> antes de aplicar migraciones en el servidor real.
-
-### 5.2 Aplicar migraciones en el servidor (cada deploy)
-
-Con el stack ya construido pero antes de servir tráfico:
+### Aplicar una migración nueva en cada deploy futuro
 
 ```bash
-docker compose -f docker-compose.prod.yml up -d --build db
+cd /opt/merku-backend
+GIT_SSH_COMMAND='ssh -i /root/.ssh/repo_deploy_key -o IdentitiesOnly=yes' git pull
+docker compose -f docker-compose.prod.yml up -d --build
 docker compose -f docker-compose.prod.yml run --rm app npx typeorm migration:run -d dist/database/data-source.js
 ```
 
-## 6. Levantar el stack completo
+### Generar una migración nueva (cuando cambien las entidades)
+
+Sin necesidad de tener Postgres localmente — usando Docker en el propio servidor (o en
+cualquier máquina con Docker):
 
 ```bash
+docker compose -f docker-compose.prod.yml up -d db
+docker run --rm --network merku-backend_merku_net -v /opt/merku-backend:/app -w /app \
+  --env-file /opt/merku-backend/.env -e DATABASE_HOST=db -e PORT_DB=5432 \
+  node:20-bookworm-slim bash -c "corepack enable && yarn install --frozen-lockfile && yarn migration:generate src/migrations/NombreDelCambio"
+```
+
+Revisa el SQL generado, cópialo a tu máquina local, commitea y haz push antes de
+correrlo en el servidor real con `migration:run`.
+
+## 6. DNS (ya hecho)
+
+`merku.co` está registrado en Porkbun. Su editor de DNS (con backend de Cloudflare, pero
+sigue siendo 100% Porkbun — no requiere cambiar nameservers a una cuenta externa de
+Cloudflare) tiene el registro:
+
+```
+A    api    46.225.27.92    TTL 600
+```
+
+Caddy emitió el certificado real para `api.merku.co` vía HTTP-01 apenas propagó el DNS.
+
+> El dominio temporal usado durante el despliegue inicial
+> (`46-225-27-92.sslip.io`, auto-resuelve a la IP sin configuración) ya no se usa, pero
+> sigue funcionando como fallback si `DOMAIN` se revierte.
+
+## 7. Stack completo
+
+```bash
+cd /opt/merku-backend
 docker compose -f docker-compose.prod.yml up -d --build
-docker compose -f docker-compose.prod.yml logs -f caddy   # confirma que emitió el certificado TLS
+docker compose -f docker-compose.prod.yml logs -f caddy   # confirma emisión del certificado TLS
+curl -I https://api.merku.co/health
 ```
 
-Verifica:
+## 8. Frontend (Cloudflare Worker `merku`)
 
-```bash
-curl -I https://api.tudominio.com/health
-```
+Repo separado (`ecomerce`), Vite + `wrangler`, desplegado automáticamente por Cloudflare
+Workers Builds en cada push a `main`. La URL de la API se hornea en build-time
+(`import.meta.env.VITE_API_URL`), así que se configura como variable de **build** en el
+dashboard de Cloudflare (Workers & Pages → `merku` → Settings), no como env var runtime:
 
-## 7. Mantenimiento / pendientes conocidos
+| Variable | Valor |
+|---|---|
+| `VITE_API_URL` / `VITE_API_BASE_URL` | `https://api.merku.co/api` |
+| `VITE_APP_URL` | `https://merku.christian75876.workers.dev` |
+| `VITE_VAPID_PUBLIC_KEY` | la pública del backend (no la privada) |
 
-- **Backups de Postgres**: el volumen `pgdata` vive solo en el disco del servidor. No
-  hay backup automático configurado todavía — si el servidor se pierde, se pierde la
-  base de datos. Cuando quieras, lo resolvemos con un servicio de `pg_dump` programado
-  hacia un Hetzner Storage Box o similar.
+Cada cambio requiere un rebuild (push a `main` o "Retry deployment" en el dashboard).
+
+`ALLOWED_ORIGINS` en el `.env` del backend debe incluir siempre el origen exacto del
+frontend activo (con `https://`, sin slash final) — el CORS en
+[src/main.ts](src/main.ts) usa `credentials: true`, así que no acepta `*`.
+
+## 9. Pendientes conocidos
+
+- **Backups de Postgres**: el volumen `pgdata` vive solo en el disco del servidor. Sin
+  backup automático — si el servidor se pierde, se pierde la base de datos. Pendiente:
+  `pg_dump` programado hacia un Hetzner Storage Box o similar.
 - **CI/CD**: el deploy es manual (`git pull` + `docker compose up -d --build` +
-  migraciones). Si el flujo se vuelve frecuente, conviene automatizarlo.
+  migraciones). Automatizar si el flujo se vuelve frecuente.
 - **`railway.toml`**: sigue en el repo del despliegue anterior en Railway. Bórralo
   cuando confirmes que Hetzner es el entorno definitivo.
-
-## 8. Conectar el frontend de Cloudflare Pages
-
-El frontend hoy vive en `https://merku.christian75876.workers.dev` (y en el futuro también
-en `https://merku.co` / `https://www.merku.co` cuando se apruebe el dominio). Para que
-pueda hablar con el backend:
-
-1. En el `.env` del backend, `ALLOWED_ORIGINS` debe incluir **exactamente** esos orígenes
-   (con `https://`, sin slash final, separados por coma). El CORS de
-   [src/main.ts](src/main.ts) usa `credentials: true`, así que no acepta `*` — cada
-   origen debe estar listado de forma explícita.
-2. En el proyecto de Cloudflare Pages (dashboard → tu proyecto → Settings → Environment
-   variables), configura la variable que el frontend usa como base URL de la API (su
-   nombre depende del framework del frontend, p. ej. `VITE_API_URL` o similar) apuntando
-   a `https://api.merku.co` (o el dominio real del backend). Vuelve a desplegar el
-   proyecto de Pages para que tome el nuevo valor.
-3. Verifica en el navegador (DevTools → Network) que las llamadas del frontend a la API
-   no muestren errores de CORS y que las cookies/headers de auth viajen correctamente.
+- **`SENTRY_DSN` / `TURNSTILE_SECRET_KEY`**: vacíos — agregar cuando se configuren esos
+  servicios (monitoreo de errores y captcha en login/registro).

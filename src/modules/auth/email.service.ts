@@ -13,9 +13,22 @@ interface BrevoEmailPayload {
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
   private readonly envConfig = EnvConfig();
-  private readonly fromEmail = this.envConfig.emailFrom;
   private readonly appName = this.envConfig.appName;
   private readonly verifyBaseUrl = this.envConfig.emailVerificationUrlBase;
+  // Acepta tanto "correo@dominio.com" como el formato RFC 5322 'Nombre <correo@dominio.com>'
+  // (este último es lo que documenta .env.example) — Brevo exige el correo puro en sender.email.
+  private readonly fromEmail = this.parseFromEmail(this.envConfig.emailFrom);
+  private readonly fromName = this.parseFromName(this.envConfig.emailFrom) ?? this.appName;
+
+  private parseFromEmail(raw: string | undefined): string | undefined {
+    const match = raw?.match(/<([^>]+)>/);
+    return (match ? match[1] : raw)?.trim();
+  }
+
+  private parseFromName(raw: string | undefined): string | undefined {
+    const match = raw?.match(/^(.*)<[^>]+>/);
+    return match?.[1].trim().replace(/^"|"$/g, '') || undefined;
+  }
 
   private async sendEmail(to: string, subject: string, html: string, text: string): Promise<void> {
     const apiKey = this.envConfig.brevoApiKey;
@@ -25,7 +38,7 @@ export class EmailService {
     this.logger.log(`Sending email to ${to} via Brevo API`);
 
     const payload: BrevoEmailPayload = {
-      sender: { email: this.fromEmail, name: this.appName },
+      sender: { email: this.fromEmail, name: this.fromName },
       to: [{ email: to }],
       subject,
       htmlContent: html,

@@ -1,13 +1,6 @@
 import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import { createTransport, Transporter } from 'nodemailer';
 import { EnvConfig } from 'src/common/env.config';
-
-interface BrevoEmailPayload {
-  sender: { email: string; name?: string };
-  to: { email: string }[];
-  subject: string;
-  htmlContent: string;
-  textContent: string;
-}
 
 @Injectable()
 export class EmailService {
@@ -16,9 +9,19 @@ export class EmailService {
   private readonly appName = this.envConfig.appName;
   private readonly verifyBaseUrl = this.envConfig.emailVerificationUrlBase;
   // Acepta tanto "correo@dominio.com" como el formato RFC 5322 'Nombre <correo@dominio.com>'
-  // (este último es lo que documenta .env.example) — Brevo exige el correo puro en sender.email.
+  // (este último es lo que documenta .env.example).
   private readonly fromEmail = this.parseFromEmail(this.envConfig.emailFrom);
   private readonly fromName = this.parseFromName(this.envConfig.emailFrom) ?? this.appName;
+  // Envío por SMTP directo (no la API HTTP de Brevo): esta última reescribe todos los
+  // links vía su dominio de tracking (r.*.sendibt2.com), que bloqueadores de anuncios/
+  // privacidad (uBlock, Brave Shields) marcan como tracker y bloquean — rompiendo los
+  // links de verificación de correo/recuperación de contraseña para esos usuarios.
+  private readonly transporter: Transporter = createTransport({
+    host: process.env.SMTP_HOST,
+    port: Number(process.env.SMTP_PORT) || 587,
+    secure: process.env.SMTP_SECURE === 'true',
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+  });
 
   private parseFromEmail(raw: string | undefined): string | undefined {
     const match = raw?.match(/<([^>]+)>/);
@@ -31,38 +34,26 @@ export class EmailService {
   }
 
   private async sendEmail(to: string, subject: string, html: string, text: string): Promise<void> {
-    const apiKey = this.envConfig.brevoApiKey;
-    if (!apiKey) throw new InternalServerErrorException('Missing BREVO_API_KEY configuration');
+    if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
+      throw new InternalServerErrorException('Missing SMTP_HOST/SMTP_USER/SMTP_PASS configuration');
+    }
     if (!this.fromEmail) throw new InternalServerErrorException('Missing EMAIL_FROM configuration');
 
-    this.logger.log(`Sending email to ${to} via Brevo API`);
+    this.logger.log(`Sending email to ${to} via SMTP (${process.env.SMTP_HOST})`);
 
-    const payload: BrevoEmailPayload = {
-      sender: { email: this.fromEmail, name: this.fromName },
-      to: [{ email: to }],
-      subject,
-      htmlContent: html,
-      textContent: text,
-    };
-
-    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
-      method: 'POST',
-      headers: {
-        'api-key': apiKey,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (!res.ok) {
-      const body = await res.text();
-      this.logger.error(`Brevo API error ${res.status}: ${body}`);
-      throw new InternalServerErrorException(`Brevo error ${res.status}: ${body}`);
+    try {
+      const info = await this.transporter.sendMail({
+        from: { name: this.fromName, address: this.fromEmail },
+        to,
+        subject,
+        html,
+        text,
+      });
+      this.logger.log(`Email sent — messageId: ${info.messageId}`);
+    } catch (err) {
+      this.logger.error(`SMTP send error: ${err instanceof Error ? err.message : String(err)}`);
+      throw new InternalServerErrorException('Failed to send email via SMTP');
     }
-
-    const data = await res.json() as { messageId?: string };
-    this.logger.log(`Email sent — messageId: ${data.messageId ?? 'ok'}`);
   }
 
   async sendVerificationEmail(to: string, token: string): Promise<void> {

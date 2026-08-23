@@ -148,4 +148,8 @@ export class UpdateStoreDto {
   @IsOptional()
   @IsString()
   paymentInstructions?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  hideLocation?: boolean;
 }

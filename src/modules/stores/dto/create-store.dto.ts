@@ -128,4 +128,8 @@ export class CreateStoreDto {
   @IsString()
   @MaxLength(300)
   addressText?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  hideLocation?: boolean;
 }

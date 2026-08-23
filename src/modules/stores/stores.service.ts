@@ -231,6 +231,7 @@ export class StoresService {
       lat: payload.lat !== undefined ? payload.lat : store.lat,
       lng: payload.lng !== undefined ? payload.lng : store.lng,
       addressText: typeof payload.addressText === 'string' ? payload.addressText.trim() || null : store.addressText,
+      hideLocation: typeof payload.hideLocation === 'boolean' ? payload.hideLocation : store.hideLocation,
     });
 
     return this.storesRepository.save(store);

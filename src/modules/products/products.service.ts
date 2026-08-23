@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ILike, Repository } from 'typeorm';
+import { randomBytes } from 'crypto';
 import { PaginatedResultDto } from 'src/common/dtos/paginated-result.dto';
 import { Product } from './entities/product.entity';
 import { ProductFavorite } from './entities/product-favorite.entity';
@@ -428,6 +429,8 @@ export class ProductsService {
     }
     if (createProductDto.sku) {
       await this.ensureUniqueSku(createProductDto.sku);
+    } else {
+      createProductDto.sku = await this.generateUniqueSku();
     }
     const initialStock = Number(createProductDto.initialStock ?? 0);
     const initialCost =
@@ -728,6 +731,16 @@ export class ProductsService {
     if (existingProduct && existingProduct.id !== currentProductId) {
       throw new ConflictException('El SKU ya está en uso por otro producto');
     }
+  }
+
+  private async generateUniqueSku(): Promise<string> {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const candidate = `SKU-${randomBytes(4).toString('hex').toUpperCase()}`;
+      const existing = await this.productsRepository.findOne({ where: { sku: candidate } });
+      if (!existing) return candidate;
+    }
+    // Extremadamente improbable llegar aquí (colisión 5 veces seguidas) — usar timestamp como último recurso.
+    return `SKU-${Date.now().toString(36).toUpperCase()}`;
   }
 
   async uploadImage(id: string, file: Express.Multer.File) {

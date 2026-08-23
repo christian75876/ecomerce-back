@@ -174,6 +174,9 @@ export class Store {
   @Column({ name: 'address_text', type: 'varchar', length: 300, nullable: true })
   addressText: string | null;
 
+  @Column({ name: 'hide_location', type: 'boolean', default: false })
+  hideLocation: boolean;
+
   @Column({ name: 'payment_instructions', type: 'text', nullable: true })
   paymentInstructions: string | null;
 

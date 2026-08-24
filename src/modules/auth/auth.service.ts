@@ -214,13 +214,21 @@ export class AuthService {
     };
   }
 
-  async register({ email, password, role_id }: RegisterDto) {
+  async register({ email, password }: RegisterDto) {
     const normalizedEmail = await this.checkDoesEmailExist(email);
+
+    // El rol nunca se toma del cliente: este endpoint solo crea cuentas 'buyer'.
+    // Convertirse en vendedor requiere una invitación válida vía registerCustomer().
+    const buyerRole = await this.roleRepository.findOne({ where: { name: 'buyer' } });
+    if (!buyerRole) {
+      throw new NotFoundException('Rol no configurado.');
+    }
+
     const { user, verificationToken } =
       await this.userRepository.manager.transaction(async (em) => {
       const hashedPass = await bcrypt.hash(password, bcrypt.genSaltSync(10));
       const user = em.create(User, {
-        role_id,
+        role_id: buyerRole.id,
         email: normalizedEmail,
         password: hashedPass,
         isEmailVerified: false,

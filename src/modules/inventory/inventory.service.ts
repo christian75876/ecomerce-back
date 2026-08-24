@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, LessThanOrEqual, MoreThan, Repository } from 'typeorm';
+import { EntityManager, IsNull, LessThanOrEqual, MoreThan, Repository } from 'typeorm';
 import {
   InventoryMovement,
   InventoryMovementType,
@@ -343,6 +343,21 @@ export class InventoryService {
     return inventoryRepository.save(movement);
   }
 
+  async hasAllocations(
+    referenceType: InventoryReferenceType,
+    referenceId: string,
+    manager?: EntityManager,
+  ): Promise<boolean> {
+    const allocationRepository = manager
+      ? manager.getRepository(InventoryBatchAllocation)
+      : this.allocationsRepository;
+
+    const count = await allocationRepository.count({
+      where: { referenceType, referenceId, restoredAt: IsNull() },
+    });
+    return count > 0;
+  }
+
   async consumeStock(params: {
     productId: string;
     quantity: number;
@@ -485,6 +500,7 @@ export class InventoryService {
       where: {
         referenceType: params.referenceType,
         referenceId: params.referenceId,
+        restoredAt: IsNull(),
       },
     });
 
@@ -500,6 +516,9 @@ export class InventoryService {
       batch.availableQuantity += allocation.quantity;
       batch.status = InventoryBatchStatus.ACTIVE;
       await batchRepository.save(batch);
+
+      allocation.restoredAt = new Date();
+      await allocationRepository.save(allocation);
 
       await this.createSystemMovement({
         productId: allocation.productId,

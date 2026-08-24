@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, In, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, LessThan, Repository } from 'typeorm';
 import { Customer } from '../customers/entities/customer.entity';
 import { Product } from '../products/entities/product.entity';
 import { Store } from '../stores/entities/store.entity';
@@ -19,6 +19,11 @@ import { PushService } from '../push/push.service';
 
 @Injectable()
 export class OrdersService {
+  // Minutos que el stock queda reservado en firme sin comprobante de pago ni
+  // confirmación de la tienda antes de liberarse automáticamente (ver
+  // releaseExpiredReservations() y orders.scheduler.ts).
+  static readonly RESERVATION_MINUTES = 20;
+
   constructor(
     private readonly dataSource: DataSource,
     @InjectRepository(Customer)
@@ -263,6 +268,10 @@ export class OrdersService {
       });
       const savedOrder = await manager.save(order);
 
+      // El stock se reserva (descuenta) de inmediato para no sobrevender, pero
+      // es una reserva temporal: si en RESERVATION_MINUTES no llega comprobante
+      // de pago ni confirmación de la tienda, releaseExpiredReservations() la
+      // libera automáticamente (ver orders.scheduler.ts) sin cancelar el pedido.
       for (const item of items) {
         const orderItem = manager.create(OrderItem, {
           orderId: savedOrder.id,
@@ -307,6 +316,31 @@ export class OrdersService {
     return Object.assign(fullOrder, { storePaymentInstructions });
   }
 
+  // Descuenta el stock de un pedido una sola vez (idempotente vía hasAllocations),
+  // sin importar si se llega por confirmPayment() o por un avance manual de estado.
+  private async consumeOrderStock(order: Order, manager?: EntityManager) {
+    const alreadyConsumed = await this.inventoryService.hasAllocations(
+      InventoryReferenceType.ORDER,
+      order.id,
+      manager,
+    );
+    if (alreadyConsumed) {
+      return;
+    }
+
+    for (const item of order.items) {
+      await this.inventoryService.consumeStock({
+        productId: item.productId,
+        quantity: item.quantity,
+        referenceType: InventoryReferenceType.ORDER,
+        referenceId: order.id,
+        referenceItemId: item.id,
+        note: `Order ${order.id}`,
+        manager,
+      });
+    }
+  }
+
   async submitPayment(id: string, dto: SubmitPaymentDto, evidenceImagePath?: string) {
     const order = await this.findOne(id);
     if (dto.paymentMethodType) order.paymentMethodType = dto.paymentMethodType.trim();
@@ -332,7 +366,11 @@ export class OrdersService {
     if (order.status === OrderStatus.PENDING) {
       order.status = OrderStatus.PAID;
     }
-    const saved = await this.ordersRepository.save(order);
+
+    const saved = await this.dataSource.transaction(async (manager) => {
+      await this.consumeOrderStock(order, manager);
+      return manager.getRepository(Order).save(order);
+    });
     void this.notifyCustomerStatusChange(saved);
     return saved;
   }
@@ -350,9 +388,42 @@ export class OrdersService {
       .getMany();
 
     for (const order of staleOrders) {
+      await this.inventoryService.restoreStockFromAllocations({
+        referenceType: InventoryReferenceType.ORDER,
+        referenceId: order.id,
+        note: `Order abandoned ${order.id}`,
+        restoredReferenceType: InventoryReferenceType.ORDER_CANCEL,
+      });
       order.status = OrderStatus.CANCELLED;
       await this.ordersRepository.save(order);
       void this.notifyCustomerStatusChange(order).catch(() => null);
+    }
+    return staleOrders.length;
+  }
+
+  // Pedidos sin comprobante de pago ni confirmación de la tienda dentro de la
+  // ventana de reserva: se libera el stock (para que otros clientes puedan
+  // comprarlo) pero el pedido SIGUE apareciendo como pendiente para la tienda
+  // — no se cancela solo, para que la tienda pueda confirmarlo si el cliente
+  // se comunica después (y re-reservar el stock si aún hay disponible).
+  async releaseExpiredReservations(): Promise<number> {
+    const cutoff = new Date(Date.now() - OrdersService.RESERVATION_MINUTES * 60 * 1000);
+
+    const staleOrders = await this.ordersRepository.find({
+      where: {
+        status: OrderStatus.PENDING,
+        paymentStatus: PaymentStatus.NONE,
+        createdAt: LessThan(cutoff),
+      },
+    });
+
+    for (const order of staleOrders) {
+      await this.inventoryService.restoreStockFromAllocations({
+        referenceType: InventoryReferenceType.ORDER,
+        referenceId: order.id,
+        note: `Reserva de stock expirada (pedido ${order.id})`,
+        restoredReferenceType: InventoryReferenceType.ORDER_CANCEL,
+      });
     }
     return staleOrders.length;
   }
@@ -488,6 +559,17 @@ export class OrdersService {
         note: `Order cancellation ${order.id}`,
         restoredReferenceType: InventoryReferenceType.ORDER_CANCEL,
       });
+    }
+
+    // Si la tienda avanza el pedido manualmente (sin usar "Confirmar pago"),
+    // el stock se descuenta igual al salir de PENDING — es el único otro
+    // punto por el que un pedido puede pasar a estar "en curso".
+    if (
+      order.status === OrderStatus.PENDING &&
+      updateOrderStatusDto.status !== OrderStatus.PENDING &&
+      updateOrderStatusDto.status !== OrderStatus.CANCELLED
+    ) {
+      await this.consumeOrderStock(order);
     }
 
     order.status = updateOrderStatusDto.status;

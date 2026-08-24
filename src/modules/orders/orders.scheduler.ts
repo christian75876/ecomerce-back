@@ -16,4 +16,14 @@ export class OrdersScheduler {
       this.logger.log(`Auto-cancelled ${cancelled} unpaid order(s) older than 5 days`);
     }
   }
+
+  // Runs every 5 minutes to release stock reserved by orders with no payment
+  // evidence/confirmation within the reservation window (order stays PENDING).
+  @Cron(CronExpression.EVERY_5_MINUTES)
+  async handleReleaseExpiredReservations() {
+    const released = await this.ordersService.releaseExpiredReservations();
+    if (released > 0) {
+      this.logger.log(`Released stock reservation for ${released} unconfirmed order(s)`);
+    }
+  }
 }

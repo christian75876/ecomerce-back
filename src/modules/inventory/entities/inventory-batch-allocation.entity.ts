@@ -64,4 +64,9 @@ export class InventoryBatchAllocation {
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
+
+  // Null mientras la reserva de stock sigue activa; se marca al restaurarse
+  // (cancelación o expiración de la reserva) para que nunca se restaure dos veces.
+  @Column({ name: 'restored_at', type: 'timestamp', nullable: true })
+  restoredAt: Date | null;
 }

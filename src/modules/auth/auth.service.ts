@@ -261,7 +261,7 @@ export class AuthService {
 
     return {
       message: emailSent
-        ? 'Usuario registrado. Revisa tu correo para verificar la cuenta.'
+        ? 'Usuario registrado. Revisa tu correo (incluida la carpeta de spam) para verificar la cuenta.'
         : 'Usuario registrado, pero no se pudo enviar el correo de verificacion.',
       id: user.id,
       email: user.email,
@@ -433,7 +433,7 @@ export class AuthService {
     });
 
     return {
-      message: 'Cuenta creada. Revisa tu correo para verificar tu cuenta antes de ingresar.',
+      message: 'Cuenta creada. Revisa tu correo (incluida la carpeta de spam) para verificar tu cuenta antes de ingresar.',
       email_delivery: 'sent',
     };
   }

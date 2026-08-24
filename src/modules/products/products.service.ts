@@ -83,8 +83,18 @@ export class ProductsService {
       .leftJoinAndSelect('product.supplier', 'supplier')
       .leftJoinAndSelect('product.menuCategory', 'menuCategory');
 
-    if (filters.search) {
-      qb.andWhere('product.name ILIKE :search', { search: `%${filters.search.trim()}%` });
+    if (filters.search?.trim()) {
+      // Coincide por nombre, descripción o categoría, palabra por palabra —
+      // así "camara sony" encuentra "Sony Cybershot" en la categoría
+      // "Cámaras" sin exigir que el nombre completo coincida tal cual.
+      const words = filters.search.trim().split(/\s+/).filter(Boolean);
+      const searchParams: Record<string, string> = {};
+      const wordConditions = words.map((word, index) => {
+        const paramName = `searchWord${index}`;
+        searchParams[paramName] = `%${word}%`;
+        return `(product.name ILIKE :${paramName} OR product.description ILIKE :${paramName} OR category.name ILIKE :${paramName})`;
+      });
+      qb.andWhere(`(${wordConditions.join(' AND ')})`, searchParams);
     }
     if (filters.categoryId) {
       qb.andWhere('product.categoryId = :categoryId', { categoryId: filters.categoryId });

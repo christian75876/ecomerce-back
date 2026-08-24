@@ -11,13 +11,12 @@ if (process.env.SENTRY_DSN) {
   });
 }
 
-// SSL only for cloud databases (Aiven/Railway). Not needed for local Docker.
-if (process.env.DB_SSL === 'true') {
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const pg = require('pg');
-  pg.defaults.ssl = { rejectUnauthorized: false };
-}
+// Note: DB_SSL (Aiven/Railway) is handled per-connection in connection.db.config.ts
+// and data-source.ts via `ssl: { rejectUnauthorized: false }` on the pg client options.
+// We deliberately do NOT set process.env.NODE_TLS_REJECT_UNAUTHORIZED here anymore —
+// that used to disable TLS certificate validation for the entire Node process,
+// including unrelated outbound HTTPS calls (Turnstile, Cloudinary, SMTP, Sentry),
+// not just the database connection.
 
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';

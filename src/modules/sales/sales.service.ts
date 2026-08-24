@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, DataSource, Repository } from 'typeorm';
 import { GetSalesQueryDto } from './dto/get-sales-query.dto';
@@ -31,7 +31,7 @@ export class SalesService {
     private readonly auditService: AuditService,
   ) {}
 
-  async findAll(query: GetSalesQueryDto = {}) {
+  async findAll(query: GetSalesQueryDto = {}, allowedStoreIds?: string[]) {
     const { storeId, paymentMethod, deliveryType, from, to, search, page = 1, limit = 20 } = query;
     const take = Math.min(Math.max(+limit, 1), 100);
     const skip = (Math.max(+page, 1) - 1) * take;
@@ -46,7 +46,13 @@ export class SalesService {
       .take(take)
       .skip(skip);
 
-    if (storeId) {
+    if (allowedStoreIds) {
+      if (storeId && !allowedStoreIds.includes(storeId)) {
+        throw new ForbiddenException('No tienes permiso para ver las ventas de esta tienda');
+      }
+      const ids = storeId ? [storeId] : allowedStoreIds;
+      qb.andWhere(ids.length ? 'sale.storeId IN (:...ids)' : '1 = 0', { ids });
+    } else if (storeId) {
       qb.andWhere('sale.storeId = :storeId', { storeId });
     }
     if (paymentMethod) {
@@ -89,7 +95,7 @@ export class SalesService {
     };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, allowedStoreIds?: string[]) {
     const sale = await this.salesRepository.findOne({
       where: { id },
     });
@@ -98,10 +104,23 @@ export class SalesService {
       throw new BadRequestException('Sale not found');
     }
 
+    if (allowedStoreIds && (!sale.storeId || !allowedStoreIds.includes(sale.storeId))) {
+      throw new ForbiddenException('No tienes permiso para ver esta venta');
+    }
+
     return sale;
   }
 
-  async create(createSaleDto: CreateSaleDto, userId?: number) {
+  async create(createSaleDto: CreateSaleDto, userId?: number, allowedStoreIds?: string[]) {
+    if (allowedStoreIds) {
+      if (!createSaleDto.storeId) {
+        throw new BadRequestException('La tienda es requerida para registrar la venta');
+      }
+      if (!allowedStoreIds.includes(createSaleDto.storeId)) {
+        throw new ForbiddenException('No tienes permiso para registrar ventas en esta tienda');
+      }
+    }
+
     return this.dataSource.transaction(async (manager) => {
       const productsRepository = manager.getRepository(Product);
       const customersRepository = manager.getRepository(Customer);

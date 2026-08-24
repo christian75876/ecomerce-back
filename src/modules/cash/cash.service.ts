@@ -1,6 +1,6 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { CashMovement, CashMovementType } from './entities/cash-movement.entity';
 import { CashSession, CashSessionStatus } from './entities/cash-session.entity';
 import { OpenCashSessionDto } from './dto/open-cash-session.dto';
@@ -19,22 +19,43 @@ export class CashService {
     private readonly storesRepository: Repository<Store>,
   ) {}
 
-  async findSessions(storeId?: string) {
+  async findSessions(storeId?: string, allowedStoreIds?: string[]) {
+    if (allowedStoreIds) {
+      if (storeId && !allowedStoreIds.includes(storeId)) {
+        throw new ForbiddenException('No tienes permiso para ver la caja de esta tienda');
+      }
+      const ids = storeId ? [storeId] : allowedStoreIds;
+      if (ids.length === 0) {
+        return [];
+      }
+      return this.sessionsRepository.find({
+        where: { storeId: In(ids) },
+        order: { createdAt: 'DESC' },
+      });
+    }
+
     return this.sessionsRepository.find({
       where: storeId ? { storeId } : undefined,
       order: { createdAt: 'DESC' },
     });
   }
 
-  async findSession(id: string) {
+  async findSession(id: string, allowedStoreIds?: string[]) {
     const session = await this.sessionsRepository.findOne({ where: { id } });
     if (!session) {
       throw new NotFoundException('Cash session not found');
     }
+    if (allowedStoreIds && !allowedStoreIds.includes(session.storeId)) {
+      throw new ForbiddenException('No tienes permiso para acceder a esta caja');
+    }
     return session;
   }
 
-  async openSession(userId: number, payload: OpenCashSessionDto) {
+  async openSession(userId: number, payload: OpenCashSessionDto, allowedStoreIds?: string[]) {
+    if (allowedStoreIds && !allowedStoreIds.includes(payload.storeId)) {
+      throw new ForbiddenException('No tienes permiso para abrir caja en esta tienda');
+    }
+
     const store = await this.storesRepository.findOne({
       where: { id: payload.storeId },
     });
@@ -64,8 +85,8 @@ export class CashService {
     return this.sessionsRepository.save(session);
   }
 
-  async closeSession(id: string, payload: CloseCashSessionDto) {
-    const session = await this.findSession(id);
+  async closeSession(id: string, payload: CloseCashSessionDto, allowedStoreIds?: string[]) {
+    const session = await this.findSession(id, allowedStoreIds);
 
     if (session.status !== CashSessionStatus.OPEN) {
       throw new BadRequestException('Cash session is not open');
@@ -79,8 +100,8 @@ export class CashService {
     return this.sessionsRepository.save(session);
   }
 
-  async addMovement(sessionId: string, payload: CreateCashMovementDto) {
-    const session = await this.findSession(sessionId);
+  async addMovement(sessionId: string, payload: CreateCashMovementDto, allowedStoreIds?: string[]) {
+    const session = await this.findSession(sessionId, allowedStoreIds);
 
     if (session.status !== CashSessionStatus.OPEN) {
       throw new BadRequestException('Cash session is not open');
@@ -112,8 +133,8 @@ export class CashService {
     await this.sessionsRepository.save(session);
   }
 
-  async getSessionMovements(sessionId: string) {
-    await this.findSession(sessionId);
+  async getSessionMovements(sessionId: string, allowedStoreIds?: string[]) {
+    await this.findSession(sessionId, allowedStoreIds);
     return this.movementsRepository.find({
       where: { cashSessionId: sessionId },
       order: { createdAt: 'DESC' },

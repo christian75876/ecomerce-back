@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -112,13 +113,17 @@ export class CustomersService {
     };
   }
 
-  async findOne(id: string, storeId?: string) {
+  async findOne(id: string, storeId?: string, allowedStoreIds?: string[]) {
     const customer = await this.customersRepository.findOne({
       where: storeId ? { id, storeId } : { id },
     });
 
     if (!customer) {
       throw new NotFoundException('Cliente no encontrado');
+    }
+
+    if (allowedStoreIds && !allowedStoreIds.includes(customer.storeId)) {
+      throw new ForbiddenException('No tienes permiso para acceder a este cliente');
     }
 
     return customer;
@@ -133,9 +138,13 @@ export class CustomersService {
     });
   }
 
-  async create(createCustomerDto: CreateCustomerDto) {
+  async create(createCustomerDto: CreateCustomerDto, allowedStoreIds?: string[]) {
     if (!createCustomerDto.storeId) {
       throw new BadRequestException('La tienda es requerida para crear un cliente');
+    }
+
+    if (allowedStoreIds && !allowedStoreIds.includes(createCustomerDto.storeId)) {
+      throw new ForbiddenException('No tienes permiso para crear clientes en esta tienda');
     }
 
     await this.ensureStoreExists(createCustomerDto.storeId);
@@ -164,9 +173,22 @@ export class CustomersService {
     return this.customersRepository.save(customer);
   }
 
-  async update(id: string, updateCustomerDto: UpdateCustomerDto, storeId?: string) {
-    const customer = await this.findOne(id, storeId);
+  async update(
+    id: string,
+    updateCustomerDto: UpdateCustomerDto,
+    storeId?: string,
+    allowedStoreIds?: string[],
+  ) {
+    const customer = await this.findOne(id, storeId, allowedStoreIds);
     const targetStoreId = updateCustomerDto.storeId ?? customer.storeId;
+
+    if (
+      updateCustomerDto.storeId &&
+      allowedStoreIds &&
+      !allowedStoreIds.includes(updateCustomerDto.storeId)
+    ) {
+      throw new ForbiddenException('No tienes permiso para mover el cliente a esta tienda');
+    }
 
     if (updateCustomerDto.storeId) {
       await this.ensureStoreExists(updateCustomerDto.storeId);
@@ -208,8 +230,8 @@ export class CustomersService {
     return this.customersRepository.save(customer);
   }
 
-  async getCreditStatus(id: string, storeId?: string) {
-    const customer = await this.findOne(id, storeId);
+  async getCreditStatus(id: string, storeId?: string, allowedStoreIds?: string[]) {
+    const customer = await this.findOne(id, storeId, allowedStoreIds);
     const ledger = await this.ledgerRepository.find({
       where: { customerId: id },
       order: { createdAt: 'DESC' },
@@ -222,8 +244,9 @@ export class CustomersService {
     id: string,
     payload: RegisterCustomerPaymentDto,
     storeId?: string,
+    allowedStoreIds?: string[],
   ) {
-    const customer = await this.findOne(id, storeId);
+    const customer = await this.findOne(id, storeId, allowedStoreIds);
 
     if (payload.amount > Number(customer.creditBalance)) {
       throw new BadRequestException('El pago supera el saldo actual del cliente');
@@ -240,7 +263,7 @@ export class CustomersService {
     });
     await this.ledgerRepository.save(entry);
 
-    return this.getCreditStatus(id, storeId);
+    return this.getCreditStatus(id, storeId, allowedStoreIds);
   }
 
   async registerCreditSale(

@@ -5,9 +5,10 @@ import { CashService } from './cash.service';
 import { CashSession } from './entities/cash-session.entity';
 import { CashMovement } from './entities/cash-movement.entity';
 import { Store } from '../stores/entities/store.entity';
+import { StoresModule } from '../stores/stores.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([CashSession, CashMovement, Store])],
+  imports: [TypeOrmModule.forFeature([CashSession, CashMovement, Store]), StoresModule],
   controllers: [CashController],
   providers: [CashService],
   exports: [CashService],

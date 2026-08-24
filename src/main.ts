@@ -70,7 +70,7 @@ async function bootstrap() {
 
   app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads' });
   const port = Number(process.env.PORT || 3000);
-  app.setGlobalPrefix('api', { exclude: ['health', 'sitemap.xml', 'og/product/:id', 'og/store/:slug'] });
+  app.setGlobalPrefix('api', { exclude: ['/', 'robots.txt', 'health', 'sitemap.xml', 'og/product/:id', 'og/store/:slug'] });
   setupSwagger(app);
   const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? 'http://localhost:5173')
     .split(',')

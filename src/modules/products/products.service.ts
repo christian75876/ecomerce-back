@@ -114,8 +114,11 @@ export class ProductsService {
       );
     }
     if (filters.onlyAvailable) {
+      // Los productos que no llevan control de lotes (trackBatches: false) nunca
+      // tienen movimientos de inventario, así que su suma siempre sería 0 — se
+      // excluyen de este filtro para no ocultarlos como si estuvieran agotados.
       qb.andWhere(
-        '(SELECT COALESCE(SUM(ib.available_quantity), 0) FROM inventory_batches ib WHERE ib.product_id = product.id) > 0',
+        '(product.trackBatches = false OR (SELECT COALESCE(SUM(ib.available_quantity), 0) FROM inventory_batches ib WHERE ib.product_id = product.id) > 0)',
       );
     }
 

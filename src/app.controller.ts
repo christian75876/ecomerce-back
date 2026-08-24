@@ -1,4 +1,5 @@
-import { Controller, Get, Header } from '@nestjs/common';
+import { Controller, Get, Res } from '@nestjs/common';
+import { Response } from 'express';
 
 @Controller()
 export class AppController {
@@ -14,10 +15,12 @@ export class AppController {
 
   // api.merku.co es una API, no una página — le decimos a los crawlers que
   // no rastreen/indexen nada aquí (evita el falso "No encontrada (404)" que
-  // Google reportaba para la raíz de este subdominio).
+  // Google reportaba para la raíz de este subdominio). @Res() bypasea el
+  // interceptor global que envuelve todo en {success, data, ...} — un
+  // robots.txt de verdad tiene que ser texto plano, no JSON.
   @Get('robots.txt')
-  @Header('Content-Type', 'text/plain')
-  robots() {
-    return 'User-agent: *\nDisallow: /\n';
+  robots(@Res() res: Response) {
+    res.setHeader('Content-Type', 'text/plain');
+    res.send('User-agent: *\nDisallow: /\n');
   }
 }

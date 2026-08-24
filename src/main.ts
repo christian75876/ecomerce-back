@@ -32,10 +32,12 @@ import { HttpErrorFilter } from './common/filters/error.filter';
 import { globalValidationPipes } from './common/pipes/global.pipes';
 import { setupSwagger } from './common/swagger.config';
 import { OrdersService } from './modules/orders/orders.service';
+import { PurchasesService } from './modules/purchases/purchases.service';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const ordersService = app.get(OrdersService);
+  const purchasesService = app.get(PurchasesService);
 
   // Protect payment evidence files — require a valid JWT AND ownership of the order
   // (buyer, the store that sold it, or admin). A valid token alone used to be enough,
@@ -61,6 +63,36 @@ async function bootstrap() {
 
     try {
       const allowed = await ordersService.canAccessPaymentEvidence(filename, userId);
+      if (!allowed) return res.status(403).json({ message: 'Forbidden' });
+      next();
+    } catch {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+  });
+
+  // Same protection as /uploads/payment-evidence above, for legacy purchase receipts
+  // that still live on local disk (current uploads go straight to Cloudinary, but
+  // this directory predates that migration and is still statically served below).
+  app.use('/uploads/purchase-payments', async (req: Request, res: Response, next: NextFunction) => {
+    const headerToken = (req.headers.authorization ?? '').replace(/^Bearer\s+/i, '');
+    const queryToken = (req.query?.token as string | undefined) ?? '';
+    const token = headerToken || queryToken;
+    if (!token) return res.status(401).json({ message: 'Unauthorized' });
+
+    let payload: unknown;
+    try {
+      payload = jwt.verify(token, process.env.JWT_SECRET ?? '');
+    } catch {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    const { sub, userId: userIdClaim } = payload as { sub?: number | string; userId?: number | string };
+    const userId = Number(sub ?? userIdClaim);
+    const filename = req.path.replace(/^\/+/, '');
+    if (!userId || !filename) return res.status(403).json({ message: 'Forbidden' });
+
+    try {
+      const allowed = await purchasesService.canAccessPurchasePaymentEvidence(filename, userId);
       if (!allowed) return res.status(403).json({ message: 'Forbidden' });
       next();
     } catch {

@@ -22,6 +22,7 @@ import { PurchaseStatus } from './entities/purchase.entity';
 import { QueryPurchasesDto } from './dto/query-purchases.dto';
 import { PurchasePaymentMethod } from './entities/purchase-payment.entity';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
+import { User } from '../users/entities/user.entity';
 
 @Injectable()
 export class PurchasesService {
@@ -430,5 +431,23 @@ export class PurchasesService {
       canCancel: cancelability?.canCancel,
       cancellationBlockedReason: cancelability?.reason ?? null,
     };
+  }
+
+  /** Used by the /uploads/purchase-payments static middleware in main.ts — JWT alone doesn't prove the requester owns this purchase's store. */
+  async canAccessPurchasePaymentEvidence(filename: string, userId: number): Promise<boolean> {
+    const evidencePath = `uploads/purchase-payments/${filename}`;
+    const payment = await this.purchasePaymentsRepository.findOne({
+      where: { receiptImagePath: evidencePath },
+      relations: { purchase: { store: true } },
+    });
+    if (!payment?.purchase) return false;
+
+    const user = await this.dataSource.getRepository(User).findOne({
+      where: { id: userId },
+      relations: { role: true },
+    });
+    if (user?.role?.name === 'admin') return true;
+
+    return payment.purchase.store?.userId === userId;
   }
 }

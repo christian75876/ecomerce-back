@@ -17,7 +17,9 @@ export class OrderItem {
   @Column({ name: 'product_id', type: 'uuid' })
   productId: string;
 
-  @ManyToOne(() => Product, { eager: true })
+  // Not eager: loaded via the `items: { product: true }` relations option
+  // wherever a consumer actually needs it (see order.entity.ts note above).
+  @ManyToOne(() => Product)
   @JoinColumn({ name: 'product_id' })
   product: Product;
 

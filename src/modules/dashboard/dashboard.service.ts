@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Between, Repository } from 'typeorm';
 import { Product } from '../products/entities/product.entity';
 import { Order, OrderStatus } from '../orders/entities/order.entity';
 import { Sale } from '../sales/entities/sale.entity';
@@ -90,6 +90,27 @@ export class DashboardService {
     startDate.setHours(0, 0, 0, 0);
     endDate.setHours(23, 59, 59, 999);
 
+    // orders/sales/movements are the only tables here whose row count grows
+    // unbounded with platform history — everything else (products, batches,
+    // customers, purchases, cash, stores) is bounded by catalog/store size.
+    // Below, orders/sales/movements are also read outside [startDate, endDate]
+    // for the "sales today" KPI (todayStart..todayEnd) and the rotation-window
+    // analysis (rotationCutoff..endDate), so the SQL filter has to cover the
+    // union of all three windows instead of just the display range.
+    const rotationCutoff = new Date(endDate);
+    rotationCutoff.setDate(rotationCutoff.getDate() - rotationDays);
+
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+
+    const queryLowerBound = new Date(
+      Math.min(startDate.getTime(), rotationCutoff.getTime(), todayStart.getTime()),
+    );
+    const queryUpperBound = new Date(Math.max(endDate.getTime(), todayEnd.getTime()));
+    const dateWindow = Between(queryLowerBound, queryUpperBound);
+
     let [
       products,
       orders,
@@ -103,13 +124,23 @@ export class DashboardService {
       cashMovements,
       stores,
     ] = await Promise.all([
-      this.productsRepository.find({ order: { createdAt: 'DESC' } }),
+      this.productsRepository.find({
+        relations: ['category', 'store'],
+        order: { createdAt: 'DESC' },
+      }),
       this.ordersRepository.find({
+        where: { createdAt: dateWindow },
         order: { createdAt: 'DESC' },
         relations: ['customer', 'items', 'items.product'],
       }),
-      this.salesRepository.find({ order: { createdAt: 'DESC' } }),
-      this.inventoryRepository.find({ order: { createdAt: 'DESC' } }),
+      this.salesRepository.find({
+        where: { createdAt: dateWindow },
+        order: { createdAt: 'DESC' },
+      }),
+      this.inventoryRepository.find({
+        where: { createdAt: dateWindow },
+        order: { createdAt: 'DESC' },
+      }),
       this.inventoryBatchesRepository.find({ order: { receivedAt: 'DESC' } }),
       this.purchasesRepository.find({ order: { purchaseDate: 'DESC' } }),
       this.customersRepository.find({ order: { updatedAt: 'DESC' } }),
@@ -236,11 +267,6 @@ export class DashboardService {
         order.status,
       ),
     ).length;
-
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date();
-    todayEnd.setHours(23, 59, 59, 999);
 
     const salesTodayPos = sales
       .filter(
@@ -500,9 +526,6 @@ export class DashboardService {
       }))
       .filter((product) => product.stock <= 0)
       .sort((a, b) => a.name.localeCompare(b.name));
-
-    const rotationCutoff = new Date(endDate);
-    rotationCutoff.setDate(rotationCutoff.getDate() - rotationDays);
 
     const soldProductIdsSinceRotation = new Set<string>();
     for (const sale of sales.filter(

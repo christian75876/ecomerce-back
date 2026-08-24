@@ -45,6 +45,7 @@ export class InventoryService {
 
     const [products, totalItems] = await this.productsRepository.findAndCount({
       where: storeId ? { storeId } : {},
+      relations: ['category'],
       order: { createdAt: 'DESC' },
       skip,
       take: limit,

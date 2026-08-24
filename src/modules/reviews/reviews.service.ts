@@ -179,6 +179,7 @@ export class ReviewsService {
       where: {
         customerId,
       },
+      relations: { items: true },
       order: {
         createdAt: 'DESC',
       },
@@ -294,6 +295,7 @@ export class ReviewsService {
   private async findValidOrderForStoreReview(customerId: string, storeId: string) {
     const orders = await this.ordersRepository.find({
       where: { customerId },
+      relations: { items: { product: true } },
       order: { createdAt: 'DESC' },
     });
 

@@ -137,7 +137,7 @@ export class OrdersService {
 
     const order = await this.ordersRepository.findOne({
       where: { id },
-      relations: { items: { product: true } },
+      relations: { items: { product: true }, customer: true },
     });
     if (!order) {
       throw new NotFoundException('Order not found');
@@ -168,7 +168,7 @@ export class OrdersService {
 
     const order = await this.ordersRepository.findOne({
       where: { id, customerId: In(customerIds) },
-      relations: { items: { product: true } },
+      relations: { items: { product: true }, customer: true },
     });
 
     if (!order) {

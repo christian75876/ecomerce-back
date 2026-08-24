@@ -39,7 +39,9 @@ export class Order {
   @Column({ name: 'customer_id', type: 'uuid' })
   customerId: string;
 
-  @ManyToOne(() => Customer, (customer) => customer.orders, { eager: true })
+  // Not eager: callers that need it request `relations: { customer: true }`
+  // explicitly (orders.service.ts findOne/findMyOne, dashboard.service.ts, etc.)
+  @ManyToOne(() => Customer, (customer) => customer.orders)
   @JoinColumn({ name: 'customer_id' })
   customer: Customer;
 
@@ -115,9 +117,11 @@ export class Order {
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamp' })
   updatedAt: Date;
 
+  // Not eager: every current call site that reads .items already requests
+  // `relations: { items: { product: true } }` explicitly — see orders.service.ts
+  // findOne()/findMyOne(), dashboard.service.ts, reviews.service.ts.
   @OneToMany(() => OrderItem, (orderItem) => orderItem.order, {
     cascade: true,
-    eager: true,
   })
   items: OrderItem[];
 }

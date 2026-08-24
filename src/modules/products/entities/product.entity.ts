@@ -96,24 +96,23 @@ export class Product {
   @Column({ name: 'supplier_id', type: 'uuid', nullable: true })
   supplierId: string | null;
 
-  @ManyToOne(() => Category, (category) => category.products, {
-    eager: true,
-  })
+  // Not eager: category/store/supplier/menuCategory used to load on every single
+  // Product fetch anywhere in the app (4 extra joins per row). Call sites that
+  // need them now request them explicitly via `relations` — see findEntity()
+  // in products.service.ts, dashboard.service.ts, inventory.service.ts, etc.
+  @ManyToOne(() => Category, (category) => category.products)
   @JoinColumn({ name: 'category_id' })
   category: Category;
 
-  @ManyToOne(() => Store, (store) => store.products, {
-    eager: true,
-    nullable: true,
-  })
+  @ManyToOne(() => Store, (store) => store.products, { nullable: true })
   @JoinColumn({ name: 'store_id' })
   store: Store | null;
 
-  @ManyToOne(() => Supplier, { eager: true, nullable: true })
+  @ManyToOne(() => Supplier, { nullable: true })
   @JoinColumn({ name: 'supplier_id' })
   supplier: Supplier | null;
 
-  @ManyToOne(() => MenuCategory, { eager: true, nullable: true })
+  @ManyToOne(() => MenuCategory, { nullable: true })
   @JoinColumn({ name: 'menu_category_id' })
   menuCategory: MenuCategory | null;
 

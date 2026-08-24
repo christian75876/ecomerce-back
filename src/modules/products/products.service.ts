@@ -243,7 +243,10 @@ export class ProductsService {
   }
 
   private async findEntity(id: string): Promise<Product> {
-    const product = await this.productsRepository.findOne({ where: { id } });
+    const product = await this.productsRepository.findOne({
+      where: { id },
+      relations: ['category', 'store', 'supplier', 'menuCategory'],
+    });
     if (!product) throw new NotFoundException('Producto no encontrado');
     return product;
   }
@@ -302,6 +305,7 @@ export class ProductsService {
         isActive: true,
         categoryId: product.categoryId,
       },
+      relations: ['store'],
       order: { createdAt: 'DESC' },
       take: limit * 2,
     });
@@ -318,6 +322,7 @@ export class ProductsService {
           isActive: true,
           storeId: product.storeId,
         },
+        relations: ['store'],
         order: { createdAt: 'DESC' },
         take: limit * 2,
       });
@@ -332,6 +337,7 @@ export class ProductsService {
     if (collected.size < limit) {
       const fallbackMatches = await this.productsRepository.find({
         where: { isActive: true },
+        relations: ['store'],
         order: { createdAt: 'DESC' },
         take: limit * 3,
       });
@@ -384,6 +390,7 @@ export class ProductsService {
   async getFeaturedSections(limit = 8) {
     const newestProducts = await this.productsRepository.find({
       where: { isActive: true },
+      relations: ['store'],
       order: { createdAt: 'DESC' },
       take: limit * 2,
     });
@@ -402,6 +409,7 @@ export class ProductsService {
         bestSellingRows.map(async (row) =>
           this.productsRepository.findOne({
             where: { id: row.productId, isActive: true },
+            relations: ['store'],
           }),
         ),
       )
@@ -639,6 +647,7 @@ export class ProductsService {
 
     const favorites = await this.favoritesRepository.find({
       where: { customerId: customer.id },
+      relations: ['product', 'product.store'],
       order: { createdAt: 'DESC' },
     });
 

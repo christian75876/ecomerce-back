@@ -7,7 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Product } from '../products/entities/product.entity';
 import { Customer } from '../customers/entities/customer.entity';
-import { Order, OrderStatus } from '../orders/entities/order.entity';
+import { Order, OrderStatus, PaymentStatus } from '../orders/entities/order.entity';
 import { Store } from '../stores/entities/store.entity';
 import { Review } from './entities/review.entity';
 import { ReviewImage } from './entities/review-image.entity';
@@ -187,6 +187,7 @@ export class ReviewsService {
     return orders.find(
       (order) =>
         order.status !== OrderStatus.CANCELLED &&
+        order.paymentStatus === PaymentStatus.CONFIRMED &&
         order.items.some((item) => item.productId === productId),
     );
   }

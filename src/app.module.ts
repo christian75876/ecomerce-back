@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { DatabaseModule } from './modules/database/database.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -71,6 +72,11 @@ import { OgPreviewModule } from './modules/og-preview/og-preview.module';
     AppInitializer,
     RoleSeederService,
     InsertUserService,
+    // Global rate limit (100 req/min/IP by default) — previously ThrottlerGuard
+    // was only wired manually onto 6 auth endpoints, leaving the rest of the
+    // API (products, orders, register, refresh, etc.) with no rate limiting.
+    // Per-route @Throttle(...) overrides still apply on top of this default.
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
 export class AppModule {}

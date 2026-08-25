@@ -25,6 +25,7 @@ import { Logger as logger } from '@nestjs/common';
 import { join } from 'path';
 import { Request, Response, NextFunction } from 'express';
 import * as jwt from 'jsonwebtoken';
+import helmet from 'helmet';
 import 'reflect-metadata';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { HttpErrorFilter } from './common/filters/error.filter';
@@ -35,6 +36,13 @@ import { PurchasesService } from './modules/purchases/purchases.service';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Security headers (HSTS, X-Content-Type-Options, X-Frame-Options, etc.)
+  // regardless of what's in front of this process. CSP is left off: Swagger UI
+  // and the og-preview HTML responses rely on inline scripts/styles that a
+  // default CSP would block, and this API doesn't serve app pages that need one.
+  app.use(helmet({ contentSecurityPolicy: false }));
+
   const ordersService = app.get(OrdersService);
   const purchasesService = app.get(PurchasesService);
 

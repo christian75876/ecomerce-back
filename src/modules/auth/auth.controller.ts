@@ -11,7 +11,7 @@ import {
   UseGuards,
   UnauthorizedException,
 } from '@nestjs/common';
-import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.auth.dto';
@@ -41,17 +41,18 @@ export class AuthController {
 
   @SwaggerRegister()
   @Post('register')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   async registerController(@Body() credentials: RegisterDto) {
     return await this.authService.register(credentials);
   }
 
   @Post('register-customer')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   async registerCustomerController(@Body() payload: RegisterCustomerDto) {
     return await this.authService.registerCustomer(payload);
   }
 
   @Post('login')
-  @UseGuards(ThrottlerGuard)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   async loginController(@Body() credentials: LoginAuthDto) {
     return await this.authService.login(credentials);
@@ -76,6 +77,7 @@ export class AuthController {
 
   @Post('refresh')
   @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   async refreshToken(@Req() req: Request) {
     const authHeader = req.headers['authorization'] as string | undefined;
     const token = authHeader?.split(' ')[1];
@@ -84,7 +86,6 @@ export class AuthController {
   }
 
   @Post('recover-passwords')
-  @UseGuards(ThrottlerGuard)
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   async createToken(@Body() body: RecoverPasswordDto) {
     const email = String(body.email).trim();
@@ -92,21 +93,18 @@ export class AuthController {
   }
 
   @Post('verify-email')
-  @UseGuards(ThrottlerGuard)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   async verifyEmail(@Body() body: VerifyEmailDto) {
     return await this.authService.verifyEmail(body);
   }
 
   @Post('recover-passwords/verify-otp')
-  @UseGuards(ThrottlerGuard)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   async verifyRecoveryOtp(@Body() body: VerifyRecoverOtpDto) {
     return await this.authService.verifyRecoveryOtp(body);
   }
 
   @Post('recover-passwords/reset')
-  @UseGuards(ThrottlerGuard)
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   async resetPassword(@Body() body: ResetPasswordDto) {
     return await this.authService.resetPassword(body);

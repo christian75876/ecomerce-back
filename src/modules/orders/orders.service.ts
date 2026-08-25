@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In, LessThan, Repository } from 'typeorm';
 import { Customer } from '../customers/entities/customer.entity';
@@ -19,6 +19,8 @@ import { PushService } from '../push/push.service';
 
 @Injectable()
 export class OrdersService {
+  private readonly logger = new Logger(OrdersService.name);
+
   // Minutos que el stock queda reservado en firme sin comprobante de pago ni
   // confirmación de la tienda antes de liberarse automáticamente (ver
   // releaseExpiredReservations() y orders.scheduler.ts).
@@ -641,7 +643,10 @@ export class OrdersService {
       }
     } catch (err) {
       // Fire-and-forget: log but don't break the response
-      console.error(`[OrdersService] Could not send status email for order ${order.id}:`, err);
+      this.logger.error(
+        `Could not send status email for order ${order.id}`,
+        err instanceof Error ? err.stack : String(err),
+      );
     }
   }
 

@@ -1,9 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectEntityManager } from '@nestjs/typeorm';
 import { EntityManager } from 'typeorm';
 
 @Injectable()
 export class RoleSeederService {
+  private readonly logger = new Logger(RoleSeederService.name);
+
   constructor(
     @InjectEntityManager()
     private readonly entityManager: EntityManager,
@@ -15,7 +17,7 @@ export class RoleSeederService {
       `);
 
     if (existingRoles.length > 0) {
-      console.log('Roles already exist, skipping insertion.');
+      this.logger.log('Roles already exist, skipping insertion.');
       return;
     }
 

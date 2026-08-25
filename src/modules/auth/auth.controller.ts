@@ -3,16 +3,14 @@ import {
   Controller,
   Post,
   Patch,
-  Res,
   HttpCode,
   Req,
   Body,
   Get,
   UseGuards,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { Request, Response } from 'express';
+import { Request } from 'express';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.auth.dto';
 import { RegisterCustomerDto } from './dto/register-customer.auth.dto';
@@ -24,6 +22,8 @@ import { ResetPasswordDto } from './dto/resetPassword.auth.dto';
 import { SwaggerLogout, SwaggerRegister } from './docs/auth.swagger';
 import { JwtAuthGuard } from './guards/jwt.auth.guard';
 import { UpdateMyProfileDto } from './dto/update-my-profile.auth.dto';
+import { RefreshTokenDto } from './dto/refresh-token.auth.dto';
+import { LogoutDto } from './dto/logout.auth.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -35,8 +35,8 @@ export class AuthController {
   @HttpCode(200)
   @SwaggerLogout()
   @UseGuards(JwtAuthGuard)
-  logoutUser(@Req() _req: Request, @Res() res: Response) {
-    res.status(200).send({ message: 'Successfully logged out' });
+  async logoutUser(@Body() dto: LogoutDto) {
+    return await this.authService.logout(dto.refreshToken);
   }
 
   @SwaggerRegister()
@@ -78,11 +78,8 @@ export class AuthController {
   @Post('refresh')
   @HttpCode(200)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
-  async refreshToken(@Req() req: Request) {
-    const authHeader = req.headers['authorization'] as string | undefined;
-    const token = authHeader?.split(' ')[1];
-    if (!token) throw new UnauthorizedException('No token provided');
-    return await this.authService.renewToken(token);
+  async refreshToken(@Body() dto: RefreshTokenDto) {
+    return await this.authService.refreshAccessToken(dto.refreshToken);
   }
 
   @Post('recover-passwords')

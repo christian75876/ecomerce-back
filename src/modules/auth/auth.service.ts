@@ -18,6 +18,7 @@ import { LoginAuthDto } from './dto/login.auth.dto';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { RecoverToken } from './entities/token.entity';
+import { RefreshToken } from './entities/refresh-token.entity';
 import { randomBytes, createHash } from 'crypto';
 import { VerifyEmailDto } from './dto/verifyEmail.auth.dto';
 import { VerifyRecoverOtpDto } from './dto/verifyRecoverOtp.auth.dto';
@@ -34,6 +35,8 @@ export class AuthService {
   private readonly recoveryOtpTtlMinutes = 10;
   private readonly verificationTtlHours = 24;
   private readonly maxOtpAttempts = 5;
+  private readonly accessTokenTtl = '15m';
+  private readonly refreshTokenTtlDays = 30;
 
   constructor(
     @InjectRepository(User) private readonly userRepository: Repository<User>,
@@ -43,6 +46,8 @@ export class AuthService {
     private jwtService: JwtService,
     @InjectRepository(RecoverToken)
     private readonly recoverTokenRepository: Repository<RecoverToken>,
+    @InjectRepository(RefreshToken)
+    private readonly refreshTokenRepository: Repository<RefreshToken>,
     private readonly emailService: EmailService,
     private readonly invitationsService: InvitationsService,
     private readonly storesService: StoresService,
@@ -78,6 +83,68 @@ export class AuthService {
       { email, purpose, isActive: true, usedAt: IsNull() },
       { isActive: false },
     );
+  }
+
+  // El refresh token es un string opaco (no un JWT) — se valida por lookup en
+  // BD, no por firma, así que se puede revocar server-side. Solo se guarda su
+  // hash (igual que las contraseñas): si la BD se filtra, no queda un token
+  // usable directamente.
+  private async issueRefreshToken(userId: number): Promise<string> {
+    const raw = randomBytes(48).toString('hex');
+    await this.refreshTokenRepository.save(
+      this.refreshTokenRepository.create({
+        userId,
+        tokenHash: this.hashValue(raw),
+        expiresAt: this.getTokenExpiry(this.refreshTokenTtlDays * 24 * 60),
+        revokedAt: null,
+      }),
+    );
+    return raw;
+  }
+
+  private async issueTokenPair(
+    userId: number,
+    roleId: string | null,
+    email: string | null,
+  ): Promise<{ token: string; refreshToken: string }> {
+    const now = Math.floor(Date.now() / 1000);
+    const payload = { sub: userId, iat: now, role_id: roleId, email };
+    const [token, refreshToken] = await Promise.all([
+      this.jwtService.signAsync(payload, { expiresIn: this.accessTokenTtl }),
+      this.issueRefreshToken(userId),
+    ]);
+    return { token, refreshToken };
+  }
+
+  // Rotación: cada uso invalida el refresh token presentado y emite uno
+  // nuevo. Si alguien roba un refresh token viejo (ya usado por el usuario
+  // legítimo), este lookup falla — no le da acceso indefinido como pasaba
+  // antes, cuando "refrescar" solo requería el propio access token.
+  async refreshAccessToken(rawRefreshToken: string): Promise<{ token: string; refreshToken: string }> {
+    const tokenHash = this.hashValue(rawRefreshToken);
+    const stored = await this.refreshTokenRepository.findOne({ where: { tokenHash } });
+
+    if (!stored || stored.revokedAt || stored.expiresAt < new Date()) {
+      throw new UnauthorizedException('Sesión expirada, vuelve a iniciar sesión.');
+    }
+
+    const user = await this.userRepository.findOne({ where: { id: stored.userId } });
+    if (!user) throw new UnauthorizedException('Usuario no encontrado.');
+
+    stored.revokedAt = new Date();
+    await this.refreshTokenRepository.save(stored);
+
+    return this.issueTokenPair(user.id, user.role_id, user.email);
+  }
+
+  async logout(rawRefreshToken?: string): Promise<{ message: string }> {
+    if (rawRefreshToken) {
+      await this.refreshTokenRepository.update(
+        { tokenHash: this.hashValue(rawRefreshToken), revokedAt: IsNull() },
+        { revokedAt: new Date() },
+      );
+    }
+    return { message: 'Successfully logged out' };
   }
 
   async checkDoesEmailExist(email: string) {
@@ -127,16 +194,15 @@ export class AuthService {
       ? await this.customerRepository.findOne({ where: { userId: user.id } })
       : null;
 
-    const now = Math.floor(Date.now() / 1000);
-    const payload = {
-      sub: user?.id ?? null,
-      iat: now,
-      role_id: user?.role_id ?? null,
-      email: user?.email ?? null,
-    };
+    const { token, refreshToken } = await this.issueTokenPair(
+      user?.id ?? -1,
+      user?.role_id ?? null,
+      user?.email ?? null,
+    );
     return {
       message: 'Login successful',
-      token: await this.jwtService.signAsync(payload, { expiresIn: '1h' }),
+      token,
+      refreshToken,
       user: {
         id: user?.id ?? null,
         email: user?.email ?? null,
@@ -147,20 +213,6 @@ export class AuthService {
           : null,
       },
     };
-  }
-
-  async renewToken(expiredToken: string): Promise<{ token: string }> {
-    let payload: { sub: number; role_id: number | null; email: string | null };
-    try {
-      payload = await this.jwtService.verifyAsync(expiredToken, { ignoreExpiration: true });
-    } catch {
-      throw new UnauthorizedException('Token inválido.');
-    }
-    const user = await this.userRepository.findOne({ where: { id: payload.sub } });
-    if (!user) throw new UnauthorizedException('Usuario no encontrado.');
-    const now = Math.floor(Date.now() / 1000);
-    const newPayload = { sub: user.id, iat: now, role_id: payload.role_id, email: user.email };
-    return { token: await this.jwtService.signAsync(newPayload, { expiresIn: '1h' }) };
   }
 
   async getAuthenticatedProfile(userId: number) {
@@ -378,11 +430,11 @@ export class AuthService {
         createdAt: new Date().toISOString(),
       });
 
-      const now = Math.floor(Date.now() / 1000);
-      const jwtPayload = { sub: user.id, iat: now, role_id: assignedRole.id, email: user.email };
+      const { token, refreshToken } = await this.issueTokenPair(user.id, assignedRole.id, user.email);
       return {
         message: 'Vendedor registrado correctamente',
-        token: await this.jwtService.signAsync(jwtPayload, { expiresIn: '1h' }),
+        token,
+        refreshToken,
         user: { id: user.id, email: user.email, role_id: user.role_id, role: assignedRole.name },
         customer: { id: customer.id, firstName: customer.firstName, lastName: customer.lastName, phone: customer.phone },
       };
@@ -410,12 +462,12 @@ export class AuthService {
           email: customer.email,
           createdAt: new Date().toISOString(),
         });
-        const now = Math.floor(Date.now() / 1000);
-        const jwtPayload = { sub: user.id, iat: now, role_id: assignedRole.id, email: user.email };
+        const { token, refreshToken } = await this.issueTokenPair(user.id, assignedRole.id, user.email);
         return {
           message: '[DEV] Correo no enviado — cuenta auto-verificada para pruebas.',
           email_delivery: 'failed',
-          token: await this.jwtService.signAsync(jwtPayload, { expiresIn: '1h' }),
+          token,
+          refreshToken,
           user: { id: user.id, email: user.email, role_id: user.role_id, role: assignedRole.name },
           customer: { id: customer.id, firstName: customer.firstName, lastName: customer.lastName, phone: customer.phone },
         };

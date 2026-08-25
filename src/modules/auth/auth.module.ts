@@ -8,6 +8,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { User } from '../users/entities/user.entity';
 import { RecoverToken } from './entities/token.entity';
+import { RefreshToken } from './entities/refresh-token.entity';
 import { Role } from '../users/entities/role.entity';
 import { Customer } from '../customers/entities/customer.entity';
 import { InvitationsModule } from '../invitations/invitations.module';
@@ -16,7 +17,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, Role, Customer, RecoverToken]),
+    TypeOrmModule.forFeature([User, Role, Customer, RecoverToken, RefreshToken]),
     ConfigModule.forRoot(),
     InvitationsModule,
     StoresModule,

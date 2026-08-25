@@ -22,6 +22,7 @@ import { UpdateStoreNotificationsDto } from './dto/update-store-notifications.dt
 import { JwtAuthGuard } from '../auth/guards/jwt.auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
+import { AuthedRequest } from 'src/common/types/authed-request';
 
 const allowedImageMimeTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
@@ -55,7 +56,7 @@ export class StoresController {
 
   @Get('mine')
   @UseGuards(JwtAuthGuard)
-  async findMine(@Req() req: any) {
+  async findMine(@Req() req: AuthedRequest) {
     return this.storesService.findMine(req.user.userId as number);
   }
 
@@ -74,7 +75,7 @@ export class StoresController {
   @Patch(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'seller')
-  async update(@Param('id') id: string, @Body() payload: UpdateStoreDto, @Req() req: any) {
+  async update(@Param('id') id: string, @Body() payload: UpdateStoreDto, @Req() req: AuthedRequest) {
     const isAdmin = req.user.role === 'admin';
     return this.storesService.update(id, payload, req.user.userId as number, isAdmin);
   }
@@ -92,7 +93,7 @@ export class StoresController {
   async updateNotifications(
     @Param('id') id: string,
     @Body() payload: UpdateStoreNotificationsDto,
-    @Req() req: any,
+    @Req() req: AuthedRequest,
   ) {
     const isAdmin = req.user.role === 'admin';
     return this.storesService.updateNotifications(id, payload, req.user.userId as number, isAdmin);
@@ -116,7 +117,7 @@ export class StoresController {
   async uploadLogo(
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File,
-    @Req() req: any,
+    @Req() req: AuthedRequest,
   ) {
     if (!file) throw new BadRequestException('No se recibió ningún archivo');
     const isAdmin = req.user.role === 'admin';
@@ -141,7 +142,7 @@ export class StoresController {
   async uploadBanner(
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File,
-    @Req() req: any,
+    @Req() req: AuthedRequest,
   ) {
     if (!file) throw new BadRequestException('No se recibió ningún archivo');
     const isAdmin = req.user.role === 'admin';

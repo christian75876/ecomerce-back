@@ -17,6 +17,7 @@ import { UpdateCategoryDto } from './dto/update-category.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt.auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
+import { AuthedRequest } from 'src/common/types/authed-request';
 import { StoresService } from '../stores/stores.service';
 
 @Controller('categories')
@@ -37,7 +38,7 @@ export class CategoriesController {
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'seller')
-  async create(@Body() createCategoryDto: CreateCategoryDto, @Req() req: any) {
+  async create(@Body() createCategoryDto: CreateCategoryDto, @Req() req: AuthedRequest) {
     if (req.user.role === 'seller') {
       const stores = await this.storesService.findMine(req.user.userId);
       if (!stores.length) {

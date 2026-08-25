@@ -15,10 +15,10 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
-import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt.auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
+import { AuthedRequest } from 'src/common/types/authed-request';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -41,13 +41,13 @@ export class ProductsController {
 
   @Get('favorites/me')
   @UseGuards(JwtAuthGuard)
-  async getMyFavorites(@Req() req: Request & { user: { userId: number } }) {
+  async getMyFavorites(@Req() req: AuthedRequest) {
     return this.productsService.getMyFavorites(req.user.userId);
   }
 
   @Get('favorites/me/ids')
   @UseGuards(JwtAuthGuard)
-  async getMyFavoriteIds(@Req() req: Request & { user: { userId: number } }) {
+  async getMyFavoriteIds(@Req() req: AuthedRequest) {
     return this.productsService.getMyFavoriteProductIds(req.user.userId);
   }
 
@@ -55,7 +55,7 @@ export class ProductsController {
   @UseGuards(JwtAuthGuard)
   async favoriteProduct(
     @Param('id') id: string,
-    @Req() req: Request & { user: { userId: number } },
+    @Req() req: AuthedRequest,
   ) {
     return this.productsService.favoriteProduct(id, req.user.userId);
   }
@@ -64,7 +64,7 @@ export class ProductsController {
   @UseGuards(JwtAuthGuard)
   async unfavoriteProduct(
     @Param('id') id: string,
-    @Req() req: Request & { user: { userId: number } },
+    @Req() req: AuthedRequest,
   ) {
     return this.productsService.unfavoriteProduct(id, req.user.userId);
   }
@@ -103,7 +103,7 @@ export class ProductsController {
   async update(
     @Param('id') id: string,
     @Body() updateProductDto: UpdateProductDto,
-    @Req() req: Request & { user: { userId: number; role: string } },
+    @Req() req: AuthedRequest,
   ) {
     return this.productsService.update(id, updateProductDto, req.user.userId, req.user.role);
   }
@@ -111,7 +111,7 @@ export class ProductsController {
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'seller')
-  async remove(@Param('id') id: string, @Req() req: any) {
+  async remove(@Param('id') id: string, @Req() req: AuthedRequest) {
     return this.productsService.remove(id, req.user.userId, req.user.role);
   }
 
@@ -121,7 +121,7 @@ export class ProductsController {
   async updateStatus(
     @Param('id') id: string,
     @Body() updateProductStatusDto: UpdateProductStatusDto,
-    @Req() req: Request & { user: { userId: number; role: string } },
+    @Req() req: AuthedRequest,
   ) {
     return this.productsService.updateStatus(id, updateProductStatusDto, req.user.userId, req.user.role);
   }

@@ -11,6 +11,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { Observable } from 'rxjs';
+import { AuthedRequest } from 'src/common/types/authed-request';
 import { NotificationsService } from './notifications.service';
 
 @Injectable()
@@ -53,7 +54,7 @@ export class NotificationsController {
 
   @Sse('stream')
   @UseGuards(SseJwtGuard)
-  stream(@Req() req: any): Observable<MessageEvent> {
+  stream(@Req() req: AuthedRequest): Observable<MessageEvent> {
     return this.notificationsService.subscribe(
       req.user.userId as number,
       (req.user.role as string) ?? 'seller',

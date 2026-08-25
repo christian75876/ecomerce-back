@@ -42,7 +42,7 @@ export class StoreAdvertisement {
   @Column({ nullable: true, type: 'text' })
   notes: string | null;
 
-  @Column({ name: 'registered_by_user_id', nullable: true })
+  @Column({ name: 'registered_by_user_id', type: 'int', nullable: true })
   registeredByUserId: number | null;
 
   @CreateDateColumn({ name: 'created_at' })

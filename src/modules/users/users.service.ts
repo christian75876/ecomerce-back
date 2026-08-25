@@ -58,7 +58,7 @@ export class UserService {
     };
   }
 
-  async createUser(dto: CreateUserDto) {
+  async create(dto: CreateUserDto) {
     const normalizedEmail = dto.email.trim().toLowerCase();
     const existing = await this.userRepository.findOne({ where: { email: normalizedEmail } });
     if (existing) {
@@ -82,7 +82,7 @@ export class UserService {
     return this.toAdminView({ ...user, role });
   }
 
-  async updateUser(id: number, dto: UpdateUserDto, requestingUserId: number) {
+  async update(id: number, dto: UpdateUserDto, requestingUserId: number) {
     const user = await this.userRepository.findOne({ where: { id }, relations: { role: true } });
     if (!user) {
       throw new NotFoundException('Usuario no encontrado.');
@@ -109,7 +109,7 @@ export class UserService {
     return this.toAdminView(updated!);
   }
 
-  async removeUser(id: number, requestingUserId: number): Promise<{ message: string }> {
+  async remove(id: number, requestingUserId: number): Promise<{ message: string }> {
     if (id === requestingUserId) {
       throw new BadRequestException('No puedes eliminar tu propio usuario.');
     }

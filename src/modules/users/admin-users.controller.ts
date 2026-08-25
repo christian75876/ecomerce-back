@@ -25,7 +25,7 @@ export class AdminUsersController {
 
   @Post()
   async create(@Body() dto: CreateUserDto) {
-    return this.userService.createUser(dto);
+    return this.userService.create(dto);
   }
 
   @Patch(':id')
@@ -34,7 +34,7 @@ export class AdminUsersController {
     @Body() dto: UpdateUserDto,
     @Req() req: Request & { user: { userId: number } },
   ) {
-    return this.userService.updateUser(Number(id), dto, req.user.userId);
+    return this.userService.update(Number(id), dto, req.user.userId);
   }
 
   @Delete(':id')
@@ -42,6 +42,6 @@ export class AdminUsersController {
     @Param('id') id: string,
     @Req() req: Request & { user: { userId: number } },
   ) {
-    return this.userService.removeUser(Number(id), req.user.userId);
+    return this.userService.remove(Number(id), req.user.userId);
   }
 }

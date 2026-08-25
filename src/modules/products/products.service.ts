@@ -415,7 +415,7 @@ export class ProductsService {
       )
     ).filter(
       (product): product is Product =>
-        Boolean(product) && (!product.store || product.store.isActive),
+        product !== null && (!product.store || product.store.isActive),
     );
 
     const filteredNewestProducts = newestProducts.filter(
@@ -509,7 +509,9 @@ export class ProductsService {
     const product = await this.findEntity(id);
 
     if (role && role !== 'admin' && requestingUserId) {
-      const store = await this.storesRepository.findOne({ where: { id: product.storeId } });
+      const store = product.storeId
+        ? await this.storesRepository.findOne({ where: { id: product.storeId } })
+        : null;
       if (!store || store.userId !== requestingUserId) {
         throw new ForbiddenException('No tienes permisos para editar este producto');
       }
@@ -577,7 +579,9 @@ export class ProductsService {
   async updateStatus(id: string, updateStatusDto: UpdateProductStatusDto, requestingUserId?: number, role?: string) {
     const product = await this.findEntity(id);
     if (role && role !== 'admin' && requestingUserId) {
-      const store = await this.storesRepository.findOne({ where: { id: product.storeId } });
+      const store = product.storeId
+        ? await this.storesRepository.findOne({ where: { id: product.storeId } })
+        : null;
       if (!store || store.userId !== requestingUserId) {
         throw new ForbiddenException('No tienes permisos para editar este producto');
       }
@@ -590,7 +594,9 @@ export class ProductsService {
     const product = await this.findEntity(id);
 
     if (role !== 'admin') {
-      const store = await this.storesRepository.findOne({ where: { id: product.storeId } });
+      const store = product.storeId
+        ? await this.storesRepository.findOne({ where: { id: product.storeId } })
+        : null;
       if (!store || store.userId !== requestingUserId) {
         throw new UnauthorizedException('No tienes permiso para eliminar este producto');
       }

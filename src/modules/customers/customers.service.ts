@@ -122,7 +122,7 @@ export class CustomersService {
       throw new NotFoundException('Cliente no encontrado');
     }
 
-    if (allowedStoreIds && !allowedStoreIds.includes(customer.storeId)) {
+    if (allowedStoreIds && (!customer.storeId || !allowedStoreIds.includes(customer.storeId))) {
       throw new ForbiddenException('No tienes permiso para acceder a este cliente');
     }
 

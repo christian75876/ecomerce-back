@@ -418,7 +418,7 @@ export class InventoryService {
         return false;
       }
       if (product.isPerishable) {
-        return Boolean(batch.expiresAt) && new Date(batch.expiresAt) >= today;
+        return batch.expiresAt != null && new Date(batch.expiresAt) >= today;
       }
       return true;
     });

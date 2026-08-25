@@ -12,9 +12,13 @@
     "baseUrl": "./",
     "incremental": true,
     "skipLibCheck": true,
-    "strictNullChecks": false,
-    "noImplicitAny": false,
-    "strictBindCallApply": false,
+    "strict": true,
+    // TypeORM/class-validator classes are hydrated by the framework (query
+    // results, request bodies), never via the constructor — so this specific
+    // strict sub-check produces a false positive on every entity/DTO property
+    // and adds no real type safety here. Every other `strict` check (in
+    // particular strictNullChecks and noImplicitAny) stays on.
+    "strictPropertyInitialization": false,
     "forceConsistentCasingInFileNames": false,
     "noFallthroughCasesInSwitch": false
   }

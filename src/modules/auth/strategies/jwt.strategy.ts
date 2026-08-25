@@ -9,14 +9,21 @@ import { Repository } from 'typeorm';
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(
-    private configService: ConfigService,
+    configService: ConfigService,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
   ) {
+    const secret = configService.get<string>('JWT_SECRET');
+    if (!secret) {
+      // Fail fast at boot rather than silently running with an undefined
+      // secret (which previously typechecked only because this file had no
+      // strict null checks).
+      throw new Error('JWT_SECRET environment variable must be set');
+    }
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: configService.get<string>('JWT_SECRET'),
+      secretOrKey: secret,
     });
   }
 

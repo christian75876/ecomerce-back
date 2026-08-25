@@ -23,7 +23,7 @@ export class HttpErrorFilter implements ExceptionFilter {
 
     const exceptionResponse = exception.getResponse();
 
-    const apiExceptionResponse: ApiResponse<void> = {
+    const apiExceptionResponse: ApiResponse<null> = {
       success: false,
       statusCode: 0,
       resource: request.url,
@@ -60,7 +60,8 @@ export class HttpErrorFilter implements ExceptionFilter {
       apiExceptionResponse.message =
         typeof exceptionResponse === 'string'
           ? exceptionResponse
-          : exceptionResponse['message'] || 'An unexpected error occurred';
+          : (exceptionResponse as { message?: string }).message ||
+            'An unexpected error occurred';
     }
 
     response.status(status).json(apiExceptionResponse);

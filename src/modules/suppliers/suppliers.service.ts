@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { ILike, Repository } from 'typeorm';
+import { ILike, IsNull, Repository } from 'typeorm';
 import { Supplier } from './entities/supplier.entity';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { UpdateSupplierDto } from './dto/update-supplier.dto';
@@ -114,7 +114,7 @@ export class SuppliersService {
 
   async create(payload: CreateSupplierDto) {
     const existing = await this.suppliersRepository.findOne({
-      where: { name: payload.name.trim(), storeId: payload.storeId ?? null },
+      where: { name: payload.name.trim(), storeId: payload.storeId ?? IsNull() },
     });
 
     if (existing) {
@@ -140,7 +140,7 @@ export class SuppliersService {
 
     if (payload.name && payload.name.trim() !== supplier.name) {
       const existing = await this.suppliersRepository.findOne({
-        where: { name: payload.name.trim(), storeId: supplier.storeId },
+        where: { name: payload.name.trim(), storeId: supplier.storeId ?? IsNull() },
       });
 
       if (existing && existing.id !== id) {

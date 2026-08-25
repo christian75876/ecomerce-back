@@ -8,7 +8,7 @@ export const globalValidationPipes = new ValidationPipe({
   disableErrorMessages: false,
   stopAtFirstError: false,
   exceptionFactory: (errors) => {
-    const errorMessages = errors.reduce((acc, error) => {
+    const errorMessages = errors.reduce<string[]>((acc, error) => {
       if (error.constraints) {
         acc.push(
           `${error.property} - ${Object.values(error.constraints).join(', ')}`,

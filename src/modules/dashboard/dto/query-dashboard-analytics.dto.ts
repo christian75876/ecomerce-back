@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsDateString, IsOptional, IsString, Min } from 'class-validator';
+import { IsDateString, IsInt, IsOptional, IsString, Min } from 'class-validator';
 
 export class QueryDashboardAnalyticsDto {
   @IsOptional()
@@ -16,11 +16,13 @@ export class QueryDashboardAnalyticsDto {
 
   @IsOptional()
   @Type(() => Number)
+  @IsInt()
   @Min(1)
   criticalStockThreshold?: number;
 
   @IsOptional()
   @Type(() => Number)
+  @IsInt()
   @Min(1)
   rotationDays?: number;
 }

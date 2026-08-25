@@ -1,6 +1,8 @@
 import { Type } from 'class-transformer';
-import { IsBoolean, IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsIn, IsNumber, IsOptional, IsString, IsUUID } from 'class-validator';
 import { PaginationQueryDto } from 'src/common/dtos/pagination-query.dto';
+
+const PRODUCT_SORT_OPTIONS = ['newest', 'price_asc', 'price_desc', 'name_asc', 'random'] as const;
 
 export class QueryProductsDto extends PaginationQueryDto {
   @IsOptional()
@@ -8,11 +10,11 @@ export class QueryProductsDto extends PaginationQueryDto {
   search?: string;
 
   @IsOptional()
-  @IsString()
+  @IsUUID('4')
   categoryId?: string;
 
   @IsOptional()
-  @IsString()
+  @IsUUID('4')
   storeId?: string;
 
   @IsOptional()
@@ -21,8 +23,8 @@ export class QueryProductsDto extends PaginationQueryDto {
   active?: boolean;
 
   @IsOptional()
-  @IsString()
-  sortBy?: string;
+  @IsIn(PRODUCT_SORT_OPTIONS)
+  sortBy?: (typeof PRODUCT_SORT_OPTIONS)[number];
 
   @IsOptional()
   @IsString()

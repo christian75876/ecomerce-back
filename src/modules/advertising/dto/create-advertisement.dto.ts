@@ -1,14 +1,14 @@
-import { IsEnum, IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
+import { IsDateString, IsEnum, IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 import { AdPaymentMethod } from '../entities/store-advertisement.entity';
 
 export class CreateAdvertisementDto {
   @IsUUID()
   storeId: string;
 
-  @IsString()
+  @IsDateString()
   startDate: string;
 
-  @IsString()
+  @IsDateString()
   endDate: string;
 
   @IsNumber()

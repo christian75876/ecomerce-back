@@ -7,7 +7,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { ILike, Repository } from 'typeorm';
+import { ILike, In, Repository } from 'typeorm';
 import { randomBytes } from 'crypto';
 import { PaginatedResultDto } from 'src/common/dtos/paginated-result.dto';
 import { Product } from './entities/product.entity';
@@ -404,19 +404,19 @@ export class ProductsService {
       .limit(limit * 2)
       .getRawMany<{ productId: string; totalSold: string }>();
 
-    const bestSellingProducts = (
-      await Promise.all(
-        bestSellingRows.map(async (row) =>
-          this.productsRepository.findOne({
-            where: { id: row.productId, isActive: true },
-            relations: ['store'],
-          }),
-        ),
-      )
-    ).filter(
-      (product): product is Product =>
-        product !== null && (!product.store || product.store.isActive),
-    );
+    const bestSellingProductRows = bestSellingRows.length
+      ? await this.productsRepository.find({
+          where: { id: In(bestSellingRows.map((row) => row.productId)), isActive: true },
+          relations: ['store'],
+        })
+      : [];
+    const bestSellingProductById = new Map(bestSellingProductRows.map((p) => [p.id, p]));
+    const bestSellingProducts = bestSellingRows
+      .map((row) => bestSellingProductById.get(row.productId))
+      .filter(
+        (product): product is Product =>
+          product !== undefined && (!product.store || product.store.isActive),
+      );
 
     const filteredNewestProducts = newestProducts.filter(
       (product) => !product.store || product.store.isActive,

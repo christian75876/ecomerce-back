@@ -17,6 +17,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt.auth.guard';
 import { CreateReviewDto } from './dto/create-review.dto';
 import { CreateStoreReviewDto } from './dto/create-store-review.dto';
 import { ReviewsService } from './reviews.service';
+import { isValidImageBuffer } from 'src/common/utils/validate-image-magic-bytes';
 
 const allowedMimeTypes = new Set([
   'image/jpeg',
@@ -62,6 +63,9 @@ export class ReviewsController {
     @Req() req: Request & { user: { userId: number } },
     @UploadedFiles() files: Express.Multer.File[],
   ) {
+    if (files.some((file) => !isValidImageBuffer(file.buffer))) {
+      throw new BadRequestException('Una de las imágenes no es un JPEG, PNG o WebP válido');
+    }
     return this.reviewsService.createOrUpdateReview(
       productId,
       req.user.userId,

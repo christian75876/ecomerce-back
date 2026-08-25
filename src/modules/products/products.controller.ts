@@ -19,6 +19,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt.auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { AuthedRequest } from 'src/common/types/authed-request';
+import { isValidImageBuffer } from 'src/common/utils/validate-image-magic-bytes';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -148,6 +149,9 @@ export class ProductsController {
     if (!file) {
       throw new BadRequestException('No se recibió ningún archivo');
     }
+    if (!isValidImageBuffer(file.buffer)) {
+      throw new BadRequestException('El archivo no es una imagen JPEG, PNG o WebP válida');
+    }
     return this.productsService.uploadImage(id, file);
   }
 
@@ -176,6 +180,9 @@ export class ProductsController {
     @UploadedFile() file: Express.Multer.File,
   ) {
     if (!file) throw new BadRequestException('No se recibió ningún archivo');
+    if (!isValidImageBuffer(file.buffer)) {
+      throw new BadRequestException('El archivo no es una imagen JPEG, PNG o WebP válida');
+    }
     return this.productsService.addGalleryImage(id, file);
   }
 

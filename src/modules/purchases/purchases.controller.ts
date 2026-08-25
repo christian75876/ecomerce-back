@@ -24,6 +24,7 @@ import { UpdatePurchaseDto } from './dto/update-purchase.dto';
 import { CancelPurchaseDto } from './dto/cancel-purchase.dto';
 import { QueryPurchasesDto } from './dto/query-purchases.dto';
 import { memoryStorage } from 'multer';
+import { isValidImageBuffer } from 'src/common/utils/validate-image-magic-bytes';
 
 type AuthedRequest = Request & { user: { userId: number; role: string } };
 
@@ -77,6 +78,9 @@ export class PurchasesController {
     @Body() payload: RegisterPurchasePaymentDto,
     @UploadedFile() receiptImage?: Express.Multer.File,
   ) {
+    if (receiptImage && !isValidImageBuffer(receiptImage.buffer)) {
+      throw new BadRequestException('El comprobante no es una imagen JPEG, PNG o WebP válida');
+    }
     return this.purchasesService.registerPayment(id, payload, receiptImage);
   }
 

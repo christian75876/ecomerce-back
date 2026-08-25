@@ -23,6 +23,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt.auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { AuthedRequest } from 'src/common/types/authed-request';
+import { isValidImageBuffer } from 'src/common/utils/validate-image-magic-bytes';
 
 const allowedImageMimeTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
@@ -120,6 +121,9 @@ export class StoresController {
     @Req() req: AuthedRequest,
   ) {
     if (!file) throw new BadRequestException('No se recibió ningún archivo');
+    if (!isValidImageBuffer(file.buffer)) {
+      throw new BadRequestException('El archivo no es una imagen JPEG, PNG o WebP válida');
+    }
     const isAdmin = req.user.role === 'admin';
     return this.storesService.uploadLogo(id, file, req.user.userId as number, isAdmin);
   }
@@ -145,6 +149,9 @@ export class StoresController {
     @Req() req: AuthedRequest,
   ) {
     if (!file) throw new BadRequestException('No se recibió ningún archivo');
+    if (!isValidImageBuffer(file.buffer)) {
+      throw new BadRequestException('El archivo no es una imagen JPEG, PNG o WebP válida');
+    }
     const isAdmin = req.user.role === 'admin';
     return this.storesService.uploadBanner(id, file, req.user.userId as number, isAdmin);
   }

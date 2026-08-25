@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -12,24 +13,31 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
+import { memoryStorage } from 'multer';
 import { extname } from 'path';
+import { mkdirSync, writeFileSync } from 'fs';
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt.auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
+import { isValidImageBuffer } from 'src/common/utils/validate-image-magic-bytes';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { SubmitPaymentDto } from './dto/submit-payment.dto';
 
-const evidenceStorage = diskStorage({
-  destination: './uploads/payment-evidence',
-  filename: (_req, file, cb) => {
-    const unique = `${Date.now()}-${Math.round(Math.random() * 1e6)}`;
-    cb(null, `${unique}${extname(file.originalname)}`);
-  },
-});
+const EVIDENCE_DIR = './uploads/payment-evidence';
+
+// El buffer solo se escribe a disco después de validar el contenido real del
+// archivo (ver isValidImageBuffer) — antes esto pasaba por diskStorage, que
+// escribe mientras el body aún se está leyendo, sin haber comprobado nada
+// más que el Content-Type declarado por el cliente (fácil de falsificar).
+function saveEvidenceBuffer(buffer: Buffer, originalname: string): string {
+  mkdirSync(EVIDENCE_DIR, { recursive: true });
+  const filename = `${Date.now()}-${Math.round(Math.random() * 1e6)}${extname(originalname)}`;
+  writeFileSync(`${EVIDENCE_DIR}/${filename}`, buffer);
+  return `uploads/payment-evidence/${filename}`;
+}
 
 @Controller('orders')
 export class OrdersController {
@@ -105,10 +113,10 @@ export class OrdersController {
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(
     FileInterceptor('evidenceImage', {
-      storage: evidenceStorage,
+      storage: memoryStorage(),
       limits: { fileSize: 5 * 1024 * 1024 },
       fileFilter: (_req, file, cb) => {
-        if (/image\/(jpeg|png|webp|gif)/.test(file.mimetype)) cb(null, true);
+        if (/image\/(jpeg|png|webp)/.test(file.mimetype)) cb(null, true);
         else cb(new Error('Solo se permiten imágenes (jpg, png, webp)'), false);
       },
     }),
@@ -118,7 +126,10 @@ export class OrdersController {
     @Body() submitPaymentDto: SubmitPaymentDto,
     @UploadedFile() file?: Express.Multer.File,
   ) {
-    const imagePath = file ? `uploads/payment-evidence/${file.filename}` : undefined;
+    if (file && !isValidImageBuffer(file.buffer)) {
+      throw new BadRequestException('El comprobante no es una imagen JPEG, PNG o WebP válida');
+    }
+    const imagePath = file ? saveEvidenceBuffer(file.buffer, file.originalname) : undefined;
     return this.ordersService.submitPayment(id, submitPaymentDto, imagePath);
   }
 

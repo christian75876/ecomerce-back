@@ -324,12 +324,18 @@ export class OrdersService {
     // Fire-and-forget: notify via SSE + WhatsApp + email + Web Push
     void this.notificationsService.notifyNewOrder(fullOrder, notifyCustomer!, notifyStores);
     void this.sendOrderEmailsToStores(fullOrder, notifyCustomer!, notifyStores);
-    void this.pushService.sendToAll({
+    // Solo a los dueños de las tiendas del pedido — sendToAll() mandaba este
+    // push a TODO suscrito, compradores incluidos, avisándoles de pedidos
+    // ajenos que no les incumben.
+    const pushPayload = {
       title: '🛍️ Nuevo pedido',
       body: `${notifyCustomer!.firstName} ${notifyCustomer!.lastName} — $${Number(fullOrder.total).toLocaleString('es-CO')}`,
-      url: '/private/orders',
+      url: '/orders',
       tag: `order-new-${fullOrder.id}`,
-    });
+    };
+    for (const store of notifyStores) {
+      if (store.userId) void this.pushService.sendToUser(store.userId, pushPayload);
+    }
 
     // Include store payment instructions in response so the customer can pay immediately
     const storePaymentInstructions =

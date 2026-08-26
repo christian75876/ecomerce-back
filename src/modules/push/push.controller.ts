@@ -14,8 +14,13 @@ export class PushController {
 
   @Post('subscribe')
   @UseGuards(JwtAuthGuard)
-  async subscribe(@Body() dto: SubscribePushDto, @Req() req: { user: { id: number } }) {
-    await this.pushService.subscribe(dto, req.user.id);
+  async subscribe(@Body() dto: SubscribePushDto, @Req() req: { user: { userId: number } }) {
+    // JwtStrategy.validate() devuelve { userId, ... } — no { id } — así que esto
+    // guardaba userId undefined en cada suscripción, dejando sendToUser() (usado
+    // para avisar al comprador el cambio de estado de su pedido) sin nada que
+    // encontrar nunca, aunque sendToAll() (nuevo pedido para vendedores) no le
+    // afectaba porque ignora el userId.
+    await this.pushService.subscribe(dto, req.user.userId);
     return { ok: true };
   }
 

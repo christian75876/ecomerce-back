@@ -14,34 +14,23 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
-import { extname } from 'path';
-import { mkdirSync, writeFileSync } from 'fs';
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt.auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { isValidImageBuffer } from 'src/common/utils/validate-image-magic-bytes';
+import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { SubmitPaymentDto } from './dto/submit-payment.dto';
 
-const EVIDENCE_DIR = './uploads/payment-evidence';
-
-// El buffer solo se escribe a disco después de validar el contenido real del
-// archivo (ver isValidImageBuffer) — antes esto pasaba por diskStorage, que
-// escribe mientras el body aún se está leyendo, sin haber comprobado nada
-// más que el Content-Type declarado por el cliente (fácil de falsificar).
-function saveEvidenceBuffer(buffer: Buffer, originalname: string): string {
-  mkdirSync(EVIDENCE_DIR, { recursive: true });
-  const filename = `${Date.now()}-${Math.round(Math.random() * 1e6)}${extname(originalname)}`;
-  writeFileSync(`${EVIDENCE_DIR}/${filename}`, buffer);
-  return `uploads/payment-evidence/${filename}`;
-}
-
 @Controller('orders')
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(
+    private readonly ordersService: OrdersService,
+    private readonly cloudinaryService: CloudinaryService,
+  ) {}
 
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -129,7 +118,9 @@ export class OrdersController {
     if (file && !isValidImageBuffer(file.buffer)) {
       throw new BadRequestException('El comprobante no es una imagen JPEG, PNG o WebP válida');
     }
-    const imagePath = file ? saveEvidenceBuffer(file.buffer, file.originalname) : undefined;
+    const imagePath = file
+      ? await this.cloudinaryService.uploadImage(file.buffer, 'payment-evidence')
+      : undefined;
     return this.ordersService.submitPayment(id, submitPaymentDto, imagePath);
   }
 

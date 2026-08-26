@@ -15,6 +15,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { CouponsModule } from '../coupons/coupons.module';
 import { EmailModule } from '../email/email.module';
 import { PushModule } from '../push/push.module';
+import { CloudinaryModule } from '../cloudinary/cloudinary.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { PushModule } from '../push/push.module';
     CouponsModule,
     EmailModule,
     PushModule,
+    CloudinaryModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService, OrdersScheduler],

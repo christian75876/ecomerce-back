@@ -9,6 +9,7 @@ const FOLDER_TRANSFORMS: Record<string, Partial<UploadApiOptions>> = {
   'stores/logos': { width: 400, height: 400, crop: 'auto', gravity: 'auto' },
   'stores/banners': { width: 1200, height: 400, crop: 'fill', gravity: 'auto' },
   'purchase-payments': { width: 1200, crop: 'limit' },
+  'payment-evidence': { width: 1200, crop: 'limit' },
   reviews: { width: 1200, crop: 'limit' },
 };
 

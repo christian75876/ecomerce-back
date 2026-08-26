@@ -35,6 +35,12 @@ export class SalesController {
     return this.salesService.findAll(query, allowedStoreIds);
   }
 
+  @Get('unified-history')
+  async findAllUnifiedHistory(@Query() query: GetSalesQueryDto, @Req() req: AuthedRequest) {
+    const allowedStoreIds = await this.resolveAllowedStoreIds(req.user);
+    return this.salesService.findAllUnifiedHistory(query, allowedStoreIds);
+  }
+
   @Get(':id')
   async findOne(@Param('id') id: string, @Req() req: AuthedRequest) {
     const allowedStoreIds = await this.resolveAllowedStoreIds(req.user);

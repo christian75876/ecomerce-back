@@ -5,6 +5,7 @@ import { SalesService } from './sales.service';
 import { Product } from '../products/entities/product.entity';
 import { Sale } from './entities/sale.entity';
 import { SaleItem } from './entities/sale-item.entity';
+import { Order } from '../orders/entities/order.entity';
 import { InventoryModule } from '../inventory/inventory.module';
 import { Customer } from '../customers/entities/customer.entity';
 import { CustomersModule } from '../customers/customers.module';
@@ -14,7 +15,7 @@ import { StoresModule } from '../stores/stores.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Product, Sale, SaleItem, Customer]),
+    TypeOrmModule.forFeature([Product, Sale, SaleItem, Customer, Order]),
     InventoryModule,
     CustomersModule,
     CashModule,

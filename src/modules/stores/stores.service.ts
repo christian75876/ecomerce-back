@@ -82,6 +82,22 @@ export class StoresService {
     return { ...store, ...rating };
   }
 
+  // CallMeBot (y en general cualquier envío a la API de WhatsApp) exige el
+  // número en formato internacional completo — sin el código de país 57,
+  // CallMeBot responde "APIKey is invalid" aunque la key sea la correcta,
+  // porque la key queda ligada al número exacto que activó el bot. Los
+  // celulares colombianos tienen 10 dígitos y siempre empiezan por 3, así
+  // que ese caso se completa solo en vez de fallar en silencio.
+  private normalizeWhatsappNumber(raw: string): string | null {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    const digits = trimmed.replace(/\D/g, '');
+    if (digits.length === 10 && digits.startsWith('3')) {
+      return `57${digits}`;
+    }
+    return digits || null;
+  }
+
   async findMine(userId: number) {
     return this.storesRepository.find({
       where: { userId },
@@ -109,7 +125,7 @@ export class StoresService {
         ? payload.wppApiKey.trim() || null
         : store.wppApiKey,
       whatsappNumber: typeof payload.whatsappNumber === 'string'
-        ? payload.whatsappNumber.trim() || null
+        ? this.normalizeWhatsappNumber(payload.whatsappNumber) ?? store.whatsappNumber
         : store.whatsappNumber,
     });
 
@@ -128,7 +144,7 @@ export class StoresService {
       secondaryColor: payload.secondaryColor?.trim() || null,
       description: payload.description?.trim() || null,
       phone: payload.phone?.trim() || null,
-      whatsappNumber: payload.whatsappNumber?.trim() || null,
+      whatsappNumber: payload.whatsappNumber ? this.normalizeWhatsappNumber(payload.whatsappNumber) : null,
       email: payload.email?.trim().toLowerCase() || null,
       isActive: payload.isActive ?? true,
       isAdultContent: false,
@@ -191,7 +207,7 @@ export class StoresService {
           : store.phone,
       whatsappNumber:
         typeof payload.whatsappNumber === 'string'
-          ? payload.whatsappNumber.trim() || null
+          ? this.normalizeWhatsappNumber(payload.whatsappNumber)
           : store.whatsappNumber,
       email:
         typeof payload.email === 'string'

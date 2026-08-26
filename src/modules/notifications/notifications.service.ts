@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { Observable, Subject } from 'rxjs';
-import { finalize } from 'rxjs/operators';
+import { Observable, Subject, interval, merge } from 'rxjs';
+import { finalize, map } from 'rxjs/operators';
 import { MessageEvent } from '@nestjs/common';
+
+const HEARTBEAT_INTERVAL_MS = 20_000;
 import { Store } from '../stores/entities/store.entity';
 import { Order } from '../orders/entities/order.entity';
 import { Customer } from '../customers/entities/customer.entity';
@@ -65,8 +67,18 @@ export class NotificationsService {
     const subject = new Subject<MessageEvent>();
     entry.subjects.push(subject);
 
+    // Sin tráfico periódico, proxies/NAT (Caddy, redes móviles) cierran la
+    // conexión SSE en silencio tras un rato inactivo — sin disparar `onerror`
+    // en el cliente, así que ni el reintento nativo de EventSource ni nuestro
+    // backoff se activan; la única señal visible era recargar la página. El
+    // heartbeat mantiene el socket con tráfico constante para que nunca llegue
+    // a quedar inactivo el tiempo suficiente como para que algo lo cierre.
+    const heartbeat = interval(HEARTBEAT_INTERVAL_MS).pipe(
+      map((): MessageEvent => ({ data: { type: 'heartbeat' } })),
+    );
+
     // Clean up this specific connection when the HTTP stream closes
-    return subject.asObservable().pipe(
+    return merge(subject.asObservable(), heartbeat).pipe(
       finalize(() => {
         const e = this.streams.get(userId);
         if (e) {
@@ -126,7 +138,7 @@ export class NotificationsService {
     for (const store of stores) {
       if (store.wppNotificationsEnabled && store.wppApiKey && store.whatsappNumber) {
         const text =
-          `🛍️ *Nuevo pedido*\n` +
+          `🛍️ *Nuevo pedido — MERKU*\n` +
           `Cliente: ${customerName}\n` +
           `Total: $${Number(order.total).toLocaleString('es-CO')}\n` +
           `Artículos: ${itemCount}\n` +

@@ -3,6 +3,7 @@ import {
   Controller,
   Post,
   Patch,
+  Delete,
   HttpCode,
   Req,
   Body,
@@ -73,6 +74,12 @@ export class AuthController {
     @Body() dto: UpdateMyProfileDto,
   ) {
     return await this.authService.updateMyProfile(req.user.userId, dto);
+  }
+
+  @Delete('me')
+  @UseGuards(JwtAuthGuard)
+  async deleteMyAccount(@Req() req: Request & { user: { userId: number } }) {
+    return await this.authService.deleteMyAccount(req.user.userId);
   }
 
   @Post('refresh')

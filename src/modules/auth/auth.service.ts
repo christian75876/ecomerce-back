@@ -266,6 +266,65 @@ export class AuthService {
     };
   }
 
+  // Autoservicio de "suprimir mis datos" (Habeas Data, Ley 1581 de 2012).
+  // Si el usuario tiene pedidos, no se borra la fila — se anonimiza, porque
+  // la ley obliga a conservar el registro contable/fiscal de esas
+  // transacciones. Sin pedidos, sí se borra por completo. Los vendedores con
+  // tiendas activas no pueden autoeliminarse (huérfanaría productos,
+  // pedidos y clientes de esa tienda) — deben contactar soporte primero.
+  async deleteMyAccount(userId: number): Promise<{ message: string }> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('Usuario no encontrado.');
+    }
+
+    const stores = await this.storesService.findMine(userId);
+    if (stores.length > 0) {
+      throw new BadRequestException(
+        'Tienes tiendas activas asociadas a tu cuenta — contáctanos en soporte para transferirlas o cerrarlas antes de eliminar tu cuenta.',
+      );
+    }
+
+    const [{ count }] = await this.userRepository.manager.query(
+      `SELECT COUNT(*)::int AS count
+       FROM orders o
+       JOIN customers c ON o.customer_id = c.id
+       WHERE c.user_id = $1`,
+      [userId],
+    );
+    const hasOrders = Number(count) > 0;
+
+    const sameEmailCustomers = await this.customerRepository.find({
+      where: { email: user.email },
+    });
+
+    if (hasOrders) {
+      for (const customer of sameEmailCustomers) {
+        customer.firstName = 'Usuario';
+        customer.lastName = 'eliminado';
+        customer.phone = null;
+        customer.email = `eliminado-${customer.id}@merku.invalid`;
+        await this.customerRepository.save(customer);
+      }
+      user.email = `eliminado-${user.id}@merku.invalid`;
+      user.password = randomBytes(32).toString('hex');
+      user.isEmailVerified = false;
+      await this.userRepository.save(user);
+    } else {
+      if (sameEmailCustomers.length > 0) {
+        await this.customerRepository.remove(sameEmailCustomers);
+      }
+      await this.userRepository.remove(user);
+    }
+
+    await this.refreshTokenRepository.update(
+      { userId, revokedAt: IsNull() },
+      { revokedAt: new Date() },
+    );
+
+    return { message: 'Tu cuenta y tus datos personales fueron eliminados correctamente.' };
+  }
+
   async register({ email, password }: RegisterDto) {
     const normalizedEmail = await this.checkDoesEmailExist(email);
 

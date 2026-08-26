@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, In, LessThan, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, LessThan, Not, Repository } from 'typeorm';
 import { Customer } from '../customers/entities/customer.entity';
 import { Product } from '../products/entities/product.entity';
 import { Store } from '../stores/entities/store.entity';
@@ -242,10 +242,30 @@ export class OrdersService {
             createOrderDto.couponCode,
             total,
           );
+
+          // Un solo uso por comprador (por correo, no solo por customerId —
+          // el mismo email puede tener varios registros "huérfanos" creados
+          // antes de iniciar sesión). Sin esto, un cupón se podía reutilizar
+          // sin límite real registrando cuentas nuevas con el mismo correo.
+          const sameEmailCustomers = await manager
+            .getRepository(Customer)
+            .find({ where: { email: customer.email }, select: ['id'] });
+          const previousUses = await manager.getRepository(Order).count({
+            where: {
+              couponCode: coupon.code,
+              customerId: In(sameEmailCustomers.map((c) => c.id)),
+              status: Not(OrderStatus.CANCELLED),
+            },
+          });
+          if (previousUses > 0) {
+            throw new BadRequestException('Ya usaste este cupón anteriormente');
+          }
+
           discountAmount = discount;
           appliedCouponCode = coupon.code;
           appliedCouponId = coupon.id;
-        } catch {
+        } catch (err) {
+          if (err instanceof BadRequestException) throw err;
           throw new BadRequestException(
             `Cupón inválido: ${createOrderDto.couponCode}`,
           );

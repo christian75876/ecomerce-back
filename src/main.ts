@@ -37,6 +37,18 @@ import { PurchasesService } from './modules/purchases/purchases.service';
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
+  // Sin esto, Express resuelve req.ip a la IP del peer que conecta directo
+  // al proceso — que en esta topología (Cloudflare -> Caddy -> app) es
+  // siempre Caddy, la misma para TODO el tráfico. El ThrottlerGuard global
+  // (100 req/min, ver app.module.ts) queda entonces compartido por el sitio
+  // entero en vez de ser por IP real: cualquier crawl normal (Googlebot
+  // rastreando varias páginas rápido, por ejemplo) puede agotar el cupo y
+  // dejar a TODOS — incluido Google intentando leer /sitemap.xml — recibiendo
+  // 429 hasta que la ventana de 60s se reinicie. "1" confía en un solo salto
+  // de proxy (Caddy), que ya reenvía el X-Forwarded-For real que puso
+  // Cloudflare en el borde.
+  app.set('trust proxy', 1);
+
   // Security headers (HSTS, X-Content-Type-Options, X-Frame-Options, etc.)
   // regardless of what's in front of this process. CSP is left off: Swagger UI
   // and the og-preview HTML responses rely on inline scripts/styles that a

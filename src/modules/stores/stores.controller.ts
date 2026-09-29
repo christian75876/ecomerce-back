@@ -14,6 +14,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import { memoryStorage } from 'multer';
 import { StoresService } from './stores.service';
 import { CreateStoreDto } from './dto/create-store.dto';
@@ -32,6 +33,7 @@ export class StoresController {
   constructor(private readonly storesService: StoresService) {}
 
   @Get()
+  @Throttle({ default: { limit: 300, ttl: 60_000 } })
   async findAll(@Query('active') active?: string) {
     return this.storesService.findAll(
       typeof active === 'string' ? active.toLowerCase() === 'true' : undefined,
@@ -62,6 +64,7 @@ export class StoresController {
   }
 
   @Get('slug/:slug')
+  @Throttle({ default: { limit: 300, ttl: 60_000 } })
   async findBySlug(@Param('slug') slug: string) {
     return this.storesService.findOneBySlug(slug, true);
   }

@@ -11,6 +11,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { CategoriesService } from './categories.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
@@ -28,6 +29,7 @@ export class CategoriesController {
   ) {}
 
   @Get()
+  @Throttle({ default: { limit: 300, ttl: 60_000 } })
   async findAll(
     @Query('active', new ParseBoolPipe({ optional: true })) active?: boolean,
     @Query('storeId') storeId?: string,

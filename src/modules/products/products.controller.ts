@@ -14,6 +14,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import { memoryStorage } from 'multer';
 import { JwtAuthGuard } from '../auth/guards/jwt.auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -35,7 +36,13 @@ const allowedImageMimeTypes = new Set(['image/jpeg', 'image/png', 'image/webp'])
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
+  // Público y de solo lectura: cada visita a la tienda dispara varias llamadas
+  // en simultáneo (catálogo, destacados, relacionados), así que el default
+  // global de 100/min (pensado para endpoints de auth) se agotaba con tráfico
+  // normal y hacía fallar el catálogo con "error de red" — lo que Google
+  // interpretaba como Soft 404 al rastrear la home.
   @Get()
+  @Throttle({ default: { limit: 300, ttl: 60_000 } })
   async findAll(@Query() query: QueryProductsDto) {
     return this.productsService.findAll(query);
   }
@@ -71,6 +78,7 @@ export class ProductsController {
   }
 
   @Get('featured/sections')
+  @Throttle({ default: { limit: 300, ttl: 60_000 } })
   async getFeaturedSections() {
     return this.productsService.getFeaturedSections();
   }
@@ -82,11 +90,13 @@ export class ProductsController {
   }
 
   @Get(':id/related')
+  @Throttle({ default: { limit: 300, ttl: 60_000 } })
   async findRelated(@Param('id') id: string) {
     return this.productsService.findRelated(id);
   }
 
   @Get(':id')
+  @Throttle({ default: { limit: 300, ttl: 60_000 } })
   async findOne(@Param('id') id: string) {
     return this.productsService.findOne(id);
   }

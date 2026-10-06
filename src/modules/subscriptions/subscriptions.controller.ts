@@ -46,12 +46,19 @@ export class SubscriptionsController {
   }
 
   // ── Store Subscriptions ──────────────────────────────────────────────────
+  // Admin-only: expone montos pagados, método de pago y comprobante de la
+  // suscripción de una tienda — la UI que lo consume (panel "Suscripciones")
+  // ya es solo de admin, pero el endpoint en sí no lo exigía.
   @Get('stores/:storeId')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
   async getStoreSubscriptions(@Param('storeId') storeId: string) {
     return this.subscriptionsService.getStoreSubscriptions(storeId);
   }
 
   @Get('stores/:storeId/status')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
   async getStoreStatus(@Param('storeId') storeId: string) {
     return this.subscriptionsService.getStoreSubscriptionStatus(storeId);
   }

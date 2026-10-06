@@ -33,7 +33,13 @@ export class AdvertisingController {
     return this.advertisingService.registerAdvertisement(dto, req.user?.userId);
   }
 
+  // Admin-only: expone montos pagados y método de pago de la publicidad de
+  // una tienda — la UI que lo consume (panel "Publicidad") ya es solo de
+  // admin, pero el endpoint en sí no lo exigía, dejando esos datos
+  // accesibles a cualquier usuario autenticado que adivinara un storeId.
   @Get('stores/:storeId')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
   async getStoreAdvertisements(@Param('storeId') storeId: string) {
     return this.advertisingService.getStoreAdvertisements(storeId);
   }

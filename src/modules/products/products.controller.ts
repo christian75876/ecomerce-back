@@ -19,8 +19,9 @@ import { memoryStorage } from 'multer';
 import { JwtAuthGuard } from '../auth/guards/jwt.auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
-import { AuthedRequest } from 'src/common/types/authed-request';
+import { AuthedRequest, AuthedUser } from 'src/common/types/authed-request';
 import { isValidImageBuffer } from 'src/common/utils/validate-image-magic-bytes';
+import { StoresService } from '../stores/stores.service';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -34,7 +35,19 @@ const allowedImageMimeTypes = new Set(['image/jpeg', 'image/png', 'image/webp'])
 
 @Controller('products')
 export class ProductsController {
-  constructor(private readonly productsService: ProductsService) {}
+  constructor(
+    private readonly productsService: ProductsService,
+    private readonly storesService: StoresService,
+  ) {}
+
+  /** undefined = sin restricción (admin); array = solo esas tiendas (seller). */
+  private async resolveAllowedStoreIds(user: AuthedUser): Promise<string[] | undefined> {
+    if (user.role !== 'seller') {
+      return undefined;
+    }
+    const stores = await this.storesService.findMine(user.userId);
+    return stores.map((s) => s.id);
+  }
 
   // Público y de solo lectura: cada visita a la tienda dispara varias llamadas
   // en simultáneo (catálogo, destacados, relacionados), así que el default
@@ -44,7 +57,18 @@ export class ProductsController {
   @Get()
   @Throttle({ default: { limit: 300, ttl: 60_000 } })
   async findAll(@Query() query: QueryProductsDto) {
-    return this.productsService.findAll(query);
+    return this.productsService.findAll(query, undefined, true);
+  }
+
+  // Panel de gestión (seller/admin): a diferencia de GET /products (catálogo
+  // público), esta SIEMPRE restringe a las tiendas del usuario autenticado,
+  // sin depender de que el frontend se acuerde de mandar storeId.
+  @Get('mine')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'seller')
+  async findMine(@Query() query: QueryProductsDto, @Req() req: AuthedRequest) {
+    const allowedStoreIds = await this.resolveAllowedStoreIds(req.user);
+    return this.productsService.findAll(query, allowedStoreIds);
   }
 
   @Get('favorites/me')
@@ -84,9 +108,11 @@ export class ProductsController {
   }
 
   @Get('options')
-  @UseGuards(JwtAuthGuard)
-  async getOptions(@Query() query: QueryProductOptionsDto) {
-    return this.productsService.getOptions(query);
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'seller')
+  async getOptions(@Query() query: QueryProductOptionsDto, @Req() req: AuthedRequest) {
+    const allowedStoreIds = await this.resolveAllowedStoreIds(req.user);
+    return this.productsService.getOptions(query, allowedStoreIds);
   }
 
   @Get(':id/related')
@@ -104,8 +130,9 @@ export class ProductsController {
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'seller')
-  async create(@Body() createProductDto: CreateProductDto) {
-    return this.productsService.create(createProductDto);
+  async create(@Body() createProductDto: CreateProductDto, @Req() req: AuthedRequest) {
+    const allowedStoreIds = await this.resolveAllowedStoreIds(req.user);
+    return this.productsService.create(createProductDto, allowedStoreIds);
   }
 
   @Patch(':id')
@@ -116,7 +143,8 @@ export class ProductsController {
     @Body() updateProductDto: UpdateProductDto,
     @Req() req: AuthedRequest,
   ) {
-    return this.productsService.update(id, updateProductDto, req.user.userId, req.user.role);
+    const allowedStoreIds = await this.resolveAllowedStoreIds(req.user);
+    return this.productsService.update(id, updateProductDto, req.user.userId, req.user.role, allowedStoreIds);
   }
 
   @Delete(':id')
@@ -155,6 +183,7 @@ export class ProductsController {
   async uploadImage(
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File,
+    @Req() req: AuthedRequest,
   ) {
     if (!file) {
       throw new BadRequestException('No se recibió ningún archivo');
@@ -162,7 +191,8 @@ export class ProductsController {
     if (!isValidImageBuffer(file.buffer)) {
       throw new BadRequestException('El archivo no es una imagen JPEG, PNG o WebP válida');
     }
-    return this.productsService.uploadImage(id, file);
+    const allowedStoreIds = await this.resolveAllowedStoreIds(req.user);
+    return this.productsService.uploadImage(id, file, allowedStoreIds);
   }
 
   @Get(':id/gallery')
@@ -188,12 +218,14 @@ export class ProductsController {
   async addGalleryImage(
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File,
+    @Req() req: AuthedRequest,
   ) {
     if (!file) throw new BadRequestException('No se recibió ningún archivo');
     if (!isValidImageBuffer(file.buffer)) {
       throw new BadRequestException('El archivo no es una imagen JPEG, PNG o WebP válida');
     }
-    return this.productsService.addGalleryImage(id, file);
+    const allowedStoreIds = await this.resolveAllowedStoreIds(req.user);
+    return this.productsService.addGalleryImage(id, file, allowedStoreIds);
   }
 
   @Patch(':id/gallery/reorder')
@@ -202,8 +234,10 @@ export class ProductsController {
   async reorderGallery(
     @Param('id') id: string,
     @Body() body: { imageIds: string[] },
+    @Req() req: AuthedRequest,
   ) {
-    return this.productsService.reorderGallery(id, body.imageIds);
+    const allowedStoreIds = await this.resolveAllowedStoreIds(req.user);
+    return this.productsService.reorderGallery(id, body.imageIds, allowedStoreIds);
   }
 
   @Delete(':id/gallery/:imageId')
@@ -212,8 +246,10 @@ export class ProductsController {
   async removeGalleryImage(
     @Param('id') id: string,
     @Param('imageId') imageId: string,
+    @Req() req: AuthedRequest,
   ) {
-    return this.productsService.removeGalleryImage(id, imageId);
+    const allowedStoreIds = await this.resolveAllowedStoreIds(req.user);
+    return this.productsService.removeGalleryImage(id, imageId, allowedStoreIds);
   }
 
   @Get(':id/videos')
@@ -227,8 +263,10 @@ export class ProductsController {
   async addVideo(
     @Param('id') id: string,
     @Body() body: { videoUrl: string; title?: string },
+    @Req() req: AuthedRequest,
   ) {
-    return this.productsService.addVideo(id, body.videoUrl, body.title);
+    const allowedStoreIds = await this.resolveAllowedStoreIds(req.user);
+    return this.productsService.addVideo(id, body.videoUrl, body.title, allowedStoreIds);
   }
 
   @Delete(':id/videos/:videoId')
@@ -237,8 +275,10 @@ export class ProductsController {
   async removeVideo(
     @Param('id') id: string,
     @Param('videoId') videoId: string,
+    @Req() req: AuthedRequest,
   ) {
-    return this.productsService.removeVideo(id, videoId);
+    const allowedStoreIds = await this.resolveAllowedStoreIds(req.user);
+    return this.productsService.removeVideo(id, videoId, allowedStoreIds);
   }
 
   // ── Variants ───────────────────────────────────────────────────────────────
@@ -254,8 +294,10 @@ export class ProductsController {
   async createVariant(
     @Param('id') id: string,
     @Body() dto: CreateProductVariantDto,
+    @Req() req: AuthedRequest,
   ) {
-    return this.productsService.createVariant(id, dto);
+    const allowedStoreIds = await this.resolveAllowedStoreIds(req.user);
+    return this.productsService.createVariant(id, dto, allowedStoreIds);
   }
 
   @Patch(':id/variants/:variantId')
@@ -265,8 +307,10 @@ export class ProductsController {
     @Param('id') id: string,
     @Param('variantId') variantId: string,
     @Body() dto: UpdateProductVariantDto,
+    @Req() req: AuthedRequest,
   ) {
-    return this.productsService.updateVariant(id, variantId, dto);
+    const allowedStoreIds = await this.resolveAllowedStoreIds(req.user);
+    return this.productsService.updateVariant(id, variantId, dto, allowedStoreIds);
   }
 
   @Delete(':id/variants/:variantId')
@@ -275,7 +319,9 @@ export class ProductsController {
   async deleteVariant(
     @Param('id') id: string,
     @Param('variantId') variantId: string,
+    @Req() req: AuthedRequest,
   ) {
-    return this.productsService.deleteVariant(id, variantId);
+    const allowedStoreIds = await this.resolveAllowedStoreIds(req.user);
+    return this.productsService.deleteVariant(id, variantId, allowedStoreIds);
   }
 }

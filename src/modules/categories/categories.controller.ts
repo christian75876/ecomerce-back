@@ -28,6 +28,15 @@ export class CategoriesController {
     private readonly storesService: StoresService,
   ) {}
 
+  /** undefined = sin restricción (admin); array = solo esas tiendas (seller). */
+  private async resolveAllowedStoreIds(user: AuthedRequest['user']): Promise<string[] | undefined> {
+    if (user.role !== 'seller') {
+      return undefined;
+    }
+    const stores = await this.storesService.findMine(user.userId);
+    return stores.map((s) => s.id);
+  }
+
   @Get()
   @Throttle({ default: { limit: 300, ttl: 60_000 } })
   async findAll(
@@ -35,6 +44,22 @@ export class CategoriesController {
     @Query('storeId') storeId?: string,
   ) {
     return this.categoriesService.findAll(active, storeId);
+  }
+
+  // Panel de gestión (seller/admin): a diferencia de GET /categories
+  // (catálogo público), esta SIEMPRE restringe a las tiendas del usuario
+  // autenticado (más las categorías globales), sin depender de que el
+  // frontend recuerde mandar storeId.
+  @Get('mine')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'seller')
+  async findMine(
+    @Query('active', new ParseBoolPipe({ optional: true })) active: boolean | undefined,
+    @Query('storeId') storeId: string | undefined,
+    @Req() req: AuthedRequest,
+  ) {
+    const allowedStoreIds = await this.resolveAllowedStoreIds(req.user);
+    return this.categoriesService.findAll(active, storeId, allowedStoreIds);
   }
 
   @Post()
@@ -57,7 +82,9 @@ export class CategoriesController {
   async update(
     @Param('id') id: string,
     @Body() updateCategoryDto: UpdateCategoryDto,
+    @Req() req: AuthedRequest,
   ) {
-    return this.categoriesService.update(id, updateCategoryDto);
+    const allowedStoreIds = await this.resolveAllowedStoreIds(req.user);
+    return this.categoriesService.update(id, updateCategoryDto, allowedStoreIds);
   }
 }

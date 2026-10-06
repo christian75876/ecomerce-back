@@ -71,7 +71,11 @@ export class ProductsService {
     private readonly cloudinaryService: CloudinaryService,
   ) {}
 
-  async findAll(filters: QueryProductsDto): Promise<PaginatedResultDto<Record<string, unknown>>> {
+  async findAll(
+    filters: QueryProductsDto,
+    allowedStoreIds?: string[],
+    redactPrivateFields = false,
+  ): Promise<PaginatedResultDto<Record<string, unknown>>> {
     const page = filters.page ?? 1;
     const limit = Math.min(filters.limit ?? 20, 500);
     const skip = (page - 1) * limit;
@@ -82,6 +86,18 @@ export class ProductsService {
       .leftJoinAndSelect('product.store', 'store')
       .leftJoinAndSelect('product.supplier', 'supplier')
       .leftJoinAndSelect('product.menuCategory', 'menuCategory');
+
+    // Scoping por tienda del vendedor — usado por /products/mine (panel de
+    // gestión). undefined = sin restricción (admin o catálogo público);
+    // si viene un storeId puntual en el query, debe estar dentro de lo que
+    // el vendedor puede ver, si no se ignora (nunca se amplía el alcance).
+    if (allowedStoreIds) {
+      if (filters.storeId && !allowedStoreIds.includes(filters.storeId)) {
+        throw new ForbiddenException('No tienes acceso a esta tienda');
+      }
+      const scopedIds = filters.storeId ? [filters.storeId] : allowedStoreIds;
+      qb.andWhere('product.storeId IN (:...scopedIds)', { scopedIds });
+    }
 
     if (filters.search?.trim()) {
       // Coincide por nombre, descripción o categoría, palabra por palabra —
@@ -152,13 +168,16 @@ export class ProductsService {
       this.getVariantsMap(products.map((p) => p.id)),
     ]);
 
-    const items = products.map((p) => ({
-      ...p,
-      availableQuantity: stockMap.get(p.id) ?? 0,
-      averageRating: ratingMap.get(p.id)?.averageRating ?? null,
-      reviewCount: ratingMap.get(p.id)?.reviewCount ?? 0,
-      hasVariants: variantsMap.get(p.id) ?? false,
-    }));
+    const items = products.map((p) => {
+      const enriched = {
+        ...p,
+        availableQuantity: stockMap.get(p.id) ?? 0,
+        averageRating: ratingMap.get(p.id)?.averageRating ?? null,
+        reviewCount: ratingMap.get(p.id)?.reviewCount ?? 0,
+        hasVariants: variantsMap.get(p.id) ?? false,
+      };
+      return redactPrivateFields ? this.stripInternalFields(enriched) : enriched;
+    });
 
     return {
       items,
@@ -225,6 +244,18 @@ export class ProductsService {
     return map;
   }
 
+  // product.cost y product.supplierId son columnas directas de la entidad
+  // (no solo la relación `supplier`), así que incluso sin hacer join siguen
+  // viajando en cualquier respuesta que haga spread del producto tal cual.
+  // Este endpoint/listado es público (vitrina del marketplace, sin auth) —
+  // nunca debe exponer costo ni proveedor a un visitante no autenticado.
+  private stripInternalFields<T extends Record<string, unknown>>(
+    product: T,
+  ): Omit<T, 'cost' | 'supplierId' | 'supplier'> {
+    const { cost: _cost, supplierId: _supplierId, supplier: _supplier, ...rest } = product;
+    return rest;
+  }
+
   async findOne(id: string) {
     const product = await this.findEntity(id);
     const [stock, ratingMap, variants] = await Promise.all([
@@ -233,13 +264,13 @@ export class ProductsService {
       this.variantsRepository.find({ where: { productId: id }, order: { order: 'ASC', createdAt: 'ASC' } }),
     ]);
     const rating = ratingMap.get(id);
-    return {
+    return this.stripInternalFields({
       ...product,
       variants,
       availableQuantity: stock,
       averageRating: rating?.averageRating ?? null,
       reviewCount: rating?.reviewCount ?? 0,
-    };
+    });
   }
 
   private async findEntity(id: string): Promise<Product> {
@@ -251,7 +282,7 @@ export class ProductsService {
     return product;
   }
 
-  async getOptions(query: QueryProductOptionsDto) {
+  async getOptions(query: QueryProductOptionsDto, allowedStoreIds?: string[]) {
     const page = query.page ?? 1;
     const limit = query.limit ?? 10;
     const builder = this.productsRepository
@@ -267,7 +298,13 @@ export class ProductsService {
       );
     }
 
-    if (query.storeId) {
+    if (allowedStoreIds) {
+      if (query.storeId && !allowedStoreIds.includes(query.storeId)) {
+        throw new ForbiddenException('No tienes acceso a esta tienda');
+      }
+      const scopedIds = query.storeId ? [query.storeId] : allowedStoreIds;
+      builder.andWhere('product.storeId IN (:...scopedIds)', { scopedIds });
+    } else if (query.storeId) {
       builder.andWhere('product.storeId = :storeId', { storeId: query.storeId });
     }
 
@@ -384,7 +421,9 @@ export class ProductsService {
       : organicItems.slice(0, limit);
 
     const variantsMap = await this.getVariantsMap(items.map((p) => p.id));
-    return items.map((p) => ({ ...p, hasVariants: variantsMap.get(p.id) ?? false }));
+    return items.map((p) =>
+      this.stripInternalFields({ ...p, hasVariants: variantsMap.get(p.id) ?? false }),
+    );
   }
 
   async getFeaturedSections(limit = 8) {
@@ -432,7 +471,9 @@ export class ProductsService {
     const variantsMap = await this.getVariantsMap(allIds);
 
     const withVariants = (products: Product[]) =>
-      products.map((p) => ({ ...p, hasVariants: variantsMap.get(p.id) ?? false }));
+      products.map((p) =>
+        this.stripInternalFields({ ...p, hasVariants: variantsMap.get(p.id) ?? false }),
+      );
 
     return {
       newestProducts: withVariants(newest),
@@ -440,8 +481,15 @@ export class ProductsService {
     };
   }
 
-  async create(createProductDto: CreateProductDto) {
-    await this.ensureCategoryExists(createProductDto.categoryId);
+  async create(createProductDto: CreateProductDto, allowedStoreIds?: string[]) {
+    if (allowedStoreIds) {
+      // Vendedor: el producto SIEMPRE debe quedar en una de sus propias
+      // tiendas — nunca confiar en el storeId que manda el cliente a ciegas.
+      if (!createProductDto.storeId || !allowedStoreIds.includes(createProductDto.storeId)) {
+        throw new ForbiddenException('No tienes permisos para crear productos en esta tienda');
+      }
+    }
+    await this.ensureCategoryExists(createProductDto.categoryId, createProductDto.storeId ?? null);
     if (createProductDto.storeId) {
       await this.ensureStoreExists(createProductDto.storeId);
     }
@@ -505,7 +553,13 @@ export class ProductsService {
     });
   }
 
-  async update(id: string, updateProductDto: UpdateProductDto, requestingUserId?: number, role?: string) {
+  async update(
+    id: string,
+    updateProductDto: UpdateProductDto,
+    requestingUserId?: number,
+    role?: string,
+    allowedStoreIds?: string[],
+  ) {
     const product = await this.findEntity(id);
 
     if (role && role !== 'admin' && requestingUserId) {
@@ -517,8 +571,16 @@ export class ProductsService {
       }
     }
 
+    // Si se reasigna a otra tienda, esa tienda también debe ser del vendedor
+    // — sin esto, un vendedor podía "mover" su producto a una tienda ajena.
+    if (allowedStoreIds && updateProductDto.storeId && !allowedStoreIds.includes(updateProductDto.storeId)) {
+      throw new ForbiddenException('No tienes permisos para asignar este producto a esa tienda');
+    }
+
+    const effectiveStoreId = updateProductDto.storeId ?? product.storeId;
+
     if (updateProductDto.categoryId) {
-      await this.ensureCategoryExists(updateProductDto.categoryId);
+      await this.ensureCategoryExists(updateProductDto.categoryId, effectiveStoreId);
     }
 
     if (updateProductDto.storeId) {
@@ -718,13 +780,28 @@ export class ProductsService {
     return favorites.map((favorite) => favorite.productId);
   }
 
-  private async ensureCategoryExists(categoryId: string) {
+  private async ensureCategoryExists(categoryId: string, productStoreId: string | null) {
     const category = await this.categoriesRepository.findOne({
       where: { id: categoryId },
     });
 
     if (!category) {
       throw new NotFoundException('Categoría no encontrada');
+    }
+
+    // Una categoría "global" (storeId null) puede usarse desde cualquier
+    // tienda, pero una categoría propia de OTRA tienda nunca debe poder
+    // asociarse a este producto.
+    if (category.storeId && category.storeId !== productStoreId) {
+      throw new ForbiddenException('La categoría no pertenece a esta tienda');
+    }
+  }
+
+  /** Lanza ForbiddenException si el producto no pertenece a ninguna de las tiendas permitidas (undefined = sin restricción, p.ej. admin). */
+  private assertProductStoreAllowed(product: Product, allowedStoreIds?: string[]) {
+    if (!allowedStoreIds) return;
+    if (!product.storeId || !allowedStoreIds.includes(product.storeId)) {
+      throw new ForbiddenException('No tienes permisos sobre este producto');
     }
   }
 
@@ -771,8 +848,9 @@ export class ProductsService {
     return `SKU-${Date.now().toString(36).toUpperCase()}`;
   }
 
-  async uploadImage(id: string, file: Express.Multer.File) {
+  async uploadImage(id: string, file: Express.Multer.File, allowedStoreIds?: string[]) {
     const product = await this.findEntity(id);
+    this.assertProductStoreAllowed(product, allowedStoreIds);
     product.imageUrl = await this.cloudinaryService.uploadImage(file.buffer, 'products');
     return this.productsRepository.save(product);
   }
@@ -784,8 +862,9 @@ export class ProductsService {
     });
   }
 
-  async addVideo(productId: string, videoUrl: string, title?: string) {
-    await this.findOne(productId);
+  async addVideo(productId: string, videoUrl: string, title?: string, allowedStoreIds?: string[]) {
+    const product = await this.findEntity(productId);
+    this.assertProductStoreAllowed(product, allowedStoreIds);
     const videoType = detectVideoType(videoUrl.trim());
     const count = await this.videosRepository.count({ where: { productId } });
     const video = this.videosRepository.create({
@@ -805,16 +884,18 @@ export class ProductsService {
     });
   }
 
-  async addGalleryImage(productId: string, file: Express.Multer.File) {
-    await this.findOne(productId);
+  async addGalleryImage(productId: string, file: Express.Multer.File, allowedStoreIds?: string[]) {
+    const product = await this.findEntity(productId);
+    this.assertProductStoreAllowed(product, allowedStoreIds);
     const count = await this.imagesRepository.count({ where: { productId } });
     const imageUrl = await this.cloudinaryService.uploadImage(file.buffer, 'products/gallery');
     const image = this.imagesRepository.create({ productId, imageUrl, order: count });
     return this.imagesRepository.save(image);
   }
 
-  async reorderGallery(productId: string, imageIds: string[]) {
-    await this.findOne(productId);
+  async reorderGallery(productId: string, imageIds: string[], allowedStoreIds?: string[]) {
+    const product = await this.findEntity(productId);
+    this.assertProductStoreAllowed(product, allowedStoreIds);
     await Promise.all(
       imageIds.map((id, index) =>
         this.imagesRepository.update({ id, productId }, { order: index }),
@@ -823,7 +904,9 @@ export class ProductsService {
     return this.getGallery(productId);
   }
 
-  async removeGalleryImage(productId: string, imageId: string) {
+  async removeGalleryImage(productId: string, imageId: string, allowedStoreIds?: string[]) {
+    const product = await this.findEntity(productId);
+    this.assertProductStoreAllowed(product, allowedStoreIds);
     const image = await this.imagesRepository.findOne({
       where: { id: imageId, productId },
     });
@@ -834,7 +917,9 @@ export class ProductsService {
     return { removed: true };
   }
 
-  async removeVideo(productId: string, videoId: string) {
+  async removeVideo(productId: string, videoId: string, allowedStoreIds?: string[]) {
+    const product = await this.findEntity(productId);
+    this.assertProductStoreAllowed(product, allowedStoreIds);
     const video = await this.videosRepository.findOne({
       where: { id: videoId, productId },
     });
@@ -867,8 +952,9 @@ export class ProductsService {
     });
   }
 
-  async createVariant(productId: string, dto: CreateProductVariantDto) {
-    await this.findEntity(productId);
+  async createVariant(productId: string, dto: CreateProductVariantDto, allowedStoreIds?: string[]) {
+    const product = await this.findEntity(productId);
+    this.assertProductStoreAllowed(product, allowedStoreIds);
 
     if (dto.sku) {
       const existing = await this.variantsRepository.findOne({ where: { sku: dto.sku.trim().toUpperCase() } });
@@ -892,7 +978,14 @@ export class ProductsService {
     return this.variantsRepository.save(variant);
   }
 
-  async updateVariant(productId: string, variantId: string, dto: UpdateProductVariantDto) {
+  async updateVariant(
+    productId: string,
+    variantId: string,
+    dto: UpdateProductVariantDto,
+    allowedStoreIds?: string[],
+  ) {
+    const product = await this.findEntity(productId);
+    this.assertProductStoreAllowed(product, allowedStoreIds);
     const variant = await this.variantsRepository.findOne({ where: { id: variantId, productId } });
     if (!variant) throw new NotFoundException('Variante no encontrada');
 
@@ -913,7 +1006,9 @@ export class ProductsService {
     return this.variantsRepository.save(variant);
   }
 
-  async deleteVariant(productId: string, variantId: string) {
+  async deleteVariant(productId: string, variantId: string, allowedStoreIds?: string[]) {
+    const product = await this.findEntity(productId);
+    this.assertProductStoreAllowed(product, allowedStoreIds);
     const variant = await this.variantsRepository.findOne({ where: { id: variantId, productId } });
     if (!variant) throw new NotFoundException('Variante no encontrada');
     await this.variantsRepository.remove(variant);

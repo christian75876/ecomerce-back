@@ -136,7 +136,11 @@ export class PurchasesService {
     return this.serializePurchase(purchase, cancelability);
   }
 
-  async create(payload: CreatePurchaseDto) {
+  async create(payload: CreatePurchaseDto, allowedStoreIds?: string[]) {
+    if (allowedStoreIds && !allowedStoreIds.includes(payload.storeId)) {
+      throw new BadRequestException('No tienes permisos para registrar compras en esta tienda');
+    }
+
     const supplier = await this.suppliersRepository.findOne({
       where: { id: payload.supplierId },
     });
@@ -239,8 +243,9 @@ export class PurchasesService {
     return this.findOne(purchaseId);
   }
 
-  async update(id: string, payload: UpdatePurchaseDto) {
+  async update(id: string, payload: UpdatePurchaseDto, allowedStoreIds?: string[]) {
     const purchase = await this.findPurchaseOrFail(id);
+    this.assertPurchaseStoreAllowed(purchase.storeId, allowedStoreIds);
 
     if (purchase.status === PurchaseStatus.CANCELLED) {
       throw new BadRequestException('Cancelled purchases cannot be edited');
@@ -263,8 +268,10 @@ export class PurchasesService {
     id: string,
     payload: RegisterPurchasePaymentDto,
     receiptImage?: Express.Multer.File,
+    allowedStoreIds?: string[],
   ) {
     const purchase = await this.findPurchaseOrFail(id);
+    this.assertPurchaseStoreAllowed(purchase.storeId, allowedStoreIds);
 
     if (purchase.status === PurchaseStatus.CANCELLED) {
       throw new BadRequestException('Cancelled purchases cannot receive payments');
@@ -300,8 +307,9 @@ export class PurchasesService {
     return this.findOne(id);
   }
 
-  async cancel(id: string, payload: CancelPurchaseDto) {
+  async cancel(id: string, payload: CancelPurchaseDto, allowedStoreIds?: string[]) {
     const purchase = await this.findPurchaseOrFail(id);
+    this.assertPurchaseStoreAllowed(purchase.storeId, allowedStoreIds);
 
     if (purchase.status === PurchaseStatus.CANCELLED) {
       throw new BadRequestException('Purchase is already cancelled');
@@ -355,6 +363,14 @@ export class PurchasesService {
   private async getSellerStoreIds(userId: number): Promise<string[]> {
     const stores = await this.storesRepository.find({ where: { userId }, select: ['id'] });
     return stores.map((s) => s.id);
+  }
+
+  /** NotFoundException en vez de Forbidden — igual que findOne, para no
+   * revelar que una compra de otra tienda existe. */
+  private assertPurchaseStoreAllowed(storeId: string, allowedStoreIds?: string[]) {
+    if (allowedStoreIds && !allowedStoreIds.includes(storeId)) {
+      throw new NotFoundException('Purchase not found');
+    }
   }
 
   private async findPurchaseOrFail(id: string) {

@@ -241,6 +241,7 @@ export class OrdersService {
           const { coupon, discountAmount: discount } = await this.couponsService.validate(
             createOrderDto.couponCode,
             total,
+            customerStoreId,
           );
 
           // Un solo uso por comprador (por correo, no solo por customerId —

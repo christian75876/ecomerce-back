@@ -56,11 +56,20 @@ export class OgPreviewController {
   }): string {
     const { title, description, url, intro, items } = params;
     const frontendUrl = this.frontendUrl;
+    const safeTitle = this.escapeHtml(title);
+    const safeDescription = this.escapeHtml(description);
+    const safeUrl = this.escapeHtml(url);
+    const safeIntro = this.escapeHtml(intro);
+    // href se construye acá mismo con frontendUrl + un id (uuid) o slug
+    // (restringido a [a-z0-9-] por @Matches en create-store.dto.ts) — no hay
+    // texto libre en esa parte, pero se escapa de todas formas por si ese
+    // contrato cambia más adelante.
     const itemsHtml = items
       .map((i) => {
         const name = this.escapeHtml(i.name);
+        const href = this.escapeHtml(i.href);
         const subtitle = i.subtitle ? ` — ${this.escapeHtml(i.subtitle)}` : '';
-        return `<li><a href="${i.href}">${name}</a>${subtitle}</li>`;
+        return `<li><a href="${href}">${name}</a>${subtitle}</li>`;
       })
       .join('\n');
 
@@ -68,22 +77,22 @@ export class OgPreviewController {
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>${title}</title>
-<meta name="description" content="${description}">
-<link rel="canonical" href="${url}">
+<title>${safeTitle}</title>
+<meta name="description" content="${safeDescription}">
+<link rel="canonical" href="${safeUrl}">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Merku">
-<meta property="og:url" content="${url}">
-<meta property="og:title" content="${title}">
-<meta property="og:description" content="${description}">
-<meta property="og:image" content="${frontendUrl}/og-image.png">
+<meta property="og:url" content="${safeUrl}">
+<meta property="og:title" content="${safeTitle}">
+<meta property="og:description" content="${safeDescription}">
+<meta property="og:image" content="${this.escapeHtml(frontendUrl)}/og-image.png">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="${title}">
-<meta name="twitter:description" content="${description}">
+<meta name="twitter:title" content="${safeTitle}">
+<meta name="twitter:description" content="${safeDescription}">
 </head>
 <body>
-<h1>${title}</h1>
-<p>${intro}</p>
+<h1>${safeTitle}</h1>
+<p>${safeIntro}</p>
 <ul>
 ${itemsHtml}
 </ul>
@@ -165,28 +174,39 @@ ${itemsHtml}
     url: string;
     spaUrl: string;
   }): string {
+    // title/description vienen de texto libre que el vendedor escribe para su
+    // producto/tienda (sin restricción de caracteres) — sin escapar, un nombre
+    // o descripción con comillas/"<script>" podía romper fuera del atributo e
+    // inyectar HTML/JS en una página que sirve este backend a cualquier bot o
+    // persona que fuerce un user-agent de bot.
     const { title, description, image, type, url, spaUrl } = params;
+    const safeTitle = this.escapeHtml(title);
+    const safeDescription = this.escapeHtml(description);
+    const safeImage = this.escapeHtml(image);
+    const safeType = this.escapeHtml(type);
+    const safeUrl = this.escapeHtml(url);
+    const safeSpaUrl = this.escapeHtml(spaUrl);
     return `<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>${title}</title>
-<meta name="description" content="${description}">
-<meta property="og:type" content="${type}">
+<title>${safeTitle}</title>
+<meta name="description" content="${safeDescription}">
+<meta property="og:type" content="${safeType}">
 <meta property="og:site_name" content="Merku">
-<meta property="og:url" content="${url}">
-<meta property="og:title" content="${title}">
-<meta property="og:description" content="${description}">
-<meta property="og:image" content="${image}">
+<meta property="og:url" content="${safeUrl}">
+<meta property="og:title" content="${safeTitle}">
+<meta property="og:description" content="${safeDescription}">
+<meta property="og:image" content="${safeImage}">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="${title}">
-<meta name="twitter:description" content="${description}">
-<meta name="twitter:image" content="${image}">
-<meta http-equiv="refresh" content="0;url=${spaUrl}">
+<meta name="twitter:title" content="${safeTitle}">
+<meta name="twitter:description" content="${safeDescription}">
+<meta name="twitter:image" content="${safeImage}">
+<meta http-equiv="refresh" content="0;url=${safeSpaUrl}">
 </head>
-<body><a href="${spaUrl}">Ver en Merku</a></body>
+<body><a href="${safeSpaUrl}">Ver en Merku</a></body>
 </html>`;
   }
 

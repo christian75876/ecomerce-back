@@ -4,12 +4,22 @@ import { Repository } from 'typeorm';
 import { Response } from 'express';
 import { Store } from '../stores/entities/store.entity';
 import { Product } from '../products/entities/product.entity';
+import { buildProductPath } from '../../common/utils/product-url';
 
-interface StaticRoute {
-  path: string;
-  changefreq: string;
-  priority: string;
-}
+// Google ignora <changefreq> y <priority>; lo que sí usa es <lastmod> (cuando
+// es preciso) para decidir qué volver a rastrear.
+const toLastmod = (date: Date | null | undefined): string =>
+  date ? `<lastmod>${new Date(date).toISOString()}</lastmod>` : '';
+
+const escapeXml = (value: string): string =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+
+const STATIC_PATHS = ['/bienvenida', '/home', '/stores', '/stores/map', '/ayuda', '/terminos', '/privacidad'];
 
 @Controller()
 export class SitemapController {
@@ -22,32 +32,28 @@ export class SitemapController {
   async getSitemap(@Res() res: Response) {
     const base = (process.env.FRONTEND_URL ?? 'http://localhost:5173').replace(/\/$/, '');
 
+    // Productos de tiendas desactivadas responden 404 (ver og-preview): no
+    // deben estar en el sitemap. Productos sin tienda (storeId null) sí.
     const [activeStores, activeProducts] = await Promise.all([
       this.stores.find({ where: { isActive: true } }),
-      this.products.find({ where: { isActive: true } }),
+      this.products
+        .createQueryBuilder('product')
+        .leftJoin('product.store', 'store')
+        .where('product.isActive = true')
+        .andWhere('(store.id IS NULL OR store.isActive = true)')
+        .select(['product.id', 'product.name', 'product.updatedAt'])
+        .getMany(),
     ]);
 
-    const staticRoutes: StaticRoute[] = [
-      { path: '/bienvenida', changefreq: 'monthly', priority: '1.0' },
-      { path: '/home',       changefreq: 'daily',   priority: '0.9' },
-      { path: '/stores',     changefreq: 'daily',   priority: '0.9' },
-      { path: '/stores/map', changefreq: 'daily',   priority: '0.7' },
-      { path: '/ayuda',      changefreq: 'monthly', priority: '0.5' },
-      { path: '/terminos',   changefreq: 'monthly', priority: '0.4' },
-      { path: '/privacidad', changefreq: 'monthly', priority: '0.4' },
-    ];
-
-    const staticUrls = staticRoutes.map(
-      (r) =>
-        `  <url><loc>${base}${r.path}</loc><changefreq>${r.changefreq}</changefreq><priority>${r.priority}</priority></url>`,
-    );
+    const staticUrls = STATIC_PATHS.map((path) => `  <url><loc>${base}${path}</loc></url>`);
 
     const storeUrls = activeStores.map(
-      (s) => `  <url><loc>${base}/stores/${s.slug}</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>`,
+      (s) => `  <url><loc>${escapeXml(`${base}/stores/${s.slug}`)}</loc>${toLastmod(s.updatedAt)}</url>`,
     );
 
     const productUrls = activeProducts.map(
-      (p) => `  <url><loc>${base}/product/${p.id}</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>`,
+      (p) =>
+        `  <url><loc>${escapeXml(`${base}${buildProductPath(p.id, p.name)}`)}</loc>${toLastmod(p.updatedAt)}</url>`,
     );
 
     const xml = [

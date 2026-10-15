@@ -30,6 +30,133 @@ export class OgPreviewController {
     }).format(Number(price));
   }
 
+  private escapeHtml(value: string): string {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  // A diferencia de buildHtml() (pensado para que redes sociales lean solo las
+  // etiquetas OG y sigan el meta-refresh), esto es para Googlebot en /home y
+  // /stores: el <body> de la SPA está vacío hasta que corre el JS
+  // (`<div id="root"></div>`), y Search Console marcó esas rutas como "Soft
+  // 404" — el algoritmo evalúa el contenido visible, no solo los metadatos.
+  // Esto le da contenido real (productos/tiendas de verdad) desde el primer
+  // byte. No es cloaking: es la misma información que vería un usuario real
+  // una vez carga la SPA, servida como "dynamic rendering" (lo que Google
+  // mismo recomienda para sitios con mucho JS), no contenido distinto u oculto.
+  private buildListingHtml(params: {
+    title: string;
+    description: string;
+    url: string;
+    intro: string;
+    items: { name: string; subtitle?: string; href: string }[];
+  }): string {
+    const { title, description, url, intro, items } = params;
+    const frontendUrl = this.frontendUrl;
+    const itemsHtml = items
+      .map((i) => {
+        const name = this.escapeHtml(i.name);
+        const subtitle = i.subtitle ? ` — ${this.escapeHtml(i.subtitle)}` : '';
+        return `<li><a href="${i.href}">${name}</a>${subtitle}</li>`;
+      })
+      .join('\n');
+
+    return `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>${title}</title>
+<meta name="description" content="${description}">
+<link rel="canonical" href="${url}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Merku">
+<meta property="og:url" content="${url}">
+<meta property="og:title" content="${title}">
+<meta property="og:description" content="${description}">
+<meta property="og:image" content="${frontendUrl}/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${title}">
+<meta name="twitter:description" content="${description}">
+</head>
+<body>
+<h1>${title}</h1>
+<p>${intro}</p>
+<ul>
+${itemsHtml}
+</ul>
+</body>
+</html>`;
+  }
+
+  @Get('og/home')
+  async getHomeOg(@Req() req: Request, @Res() res: Response): Promise<void> {
+    const ua = (req.headers['user-agent'] ?? '') as string;
+    const frontendUrl = this.frontendUrl;
+    const spaUrl = `${frontendUrl}/home`;
+
+    if (!this.isBot(ua)) {
+      res.redirect(302, spaUrl);
+      return;
+    }
+
+    const products = await this.products.find({
+      where: { isActive: true },
+      relations: { store: true },
+      order: { createdAt: 'DESC' },
+      take: 24,
+    });
+
+    const html = this.buildListingHtml({
+      title: 'Merku — Encuentra lo que buscas',
+      description:
+        'Merku: explora cientos de productos de tiendas locales. Encuentra lo que necesitas al mejor precio.',
+      url: spaUrl,
+      intro: 'Explora productos de tiendas locales en Merku.',
+      items: products.map((p) => ({
+        name: p.name,
+        subtitle: p.store?.name ? `${this.formatCOP(p.price)} · ${p.store.name}` : this.formatCOP(p.price),
+        href: `${frontendUrl}/product/${p.id}`,
+      })),
+    });
+
+    res.type('html').send(html);
+  }
+
+  @Get('og/stores')
+  async getStoresOg(@Req() req: Request, @Res() res: Response): Promise<void> {
+    const ua = (req.headers['user-agent'] ?? '') as string;
+    const frontendUrl = this.frontendUrl;
+    const spaUrl = `${frontendUrl}/stores`;
+
+    if (!this.isBot(ua)) {
+      res.redirect(302, spaUrl);
+      return;
+    }
+
+    const stores = await this.stores.find({
+      where: { isActive: true },
+      order: { createdAt: 'DESC' },
+    });
+
+    const html = this.buildListingHtml({
+      title: 'Tiendas disponibles — Merku',
+      description:
+        'Explora todas las tiendas y restaurantes disponibles en Merku. Encuentra productos locales y realiza tu pedido.',
+      url: spaUrl,
+      intro: 'Tiendas y restaurantes disponibles en Merku.',
+      items: stores.map((s) => ({
+        name: s.name,
+        subtitle: s.description ? s.description.slice(0, 120) : undefined,
+        href: `${frontendUrl}/stores/${s.slug}`,
+      })),
+    });
+
+    res.type('html').send(html);
+  }
+
   private buildHtml(params: {
     title: string;
     description: string;

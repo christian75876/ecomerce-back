@@ -128,10 +128,18 @@ export class NotificationsService {
       createdAt: new Date().toISOString(),
     };
 
-    // Broadcast to ALL connected panel users (sellers AND admins)
+    // Solo a los admins (ven todo el marketplace) y a los dueños de las
+    // tiendas de este pedido — antes se mandaba a TODO seller conectado,
+    // filtrando pedidos de tiendas ajenas. Mismo criterio que ya se aplica
+    // para el Web Push de este mismo evento (ver orders.service.ts).
+    const storeOwnerIds = new Set(
+      stores.map((s) => s.userId).filter((id): id is number => id != null),
+    );
     const event: MessageEvent = { data: payload };
-    this.streams.forEach(({ subjects }) => {
-      subjects.forEach((s) => s.next(event));
+    this.streams.forEach(({ subjects, role }, streamUserId) => {
+      if (role === 'admin' || storeOwnerIds.has(streamUserId)) {
+        subjects.forEach((s) => s.next(event));
+      }
     });
 
     // WhatsApp via CallMeBot — per store

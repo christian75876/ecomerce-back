@@ -25,6 +25,7 @@ import { CancelPurchaseDto } from './dto/cancel-purchase.dto';
 import { QueryPurchasesDto } from './dto/query-purchases.dto';
 import { memoryStorage } from 'multer';
 import { isValidImageBuffer } from 'src/common/utils/validate-image-magic-bytes';
+import { StoresService } from '../stores/stores.service';
 
 type AuthedRequest = Request & { user: { userId: number; role: string } };
 
@@ -38,7 +39,19 @@ const allowedReceiptMimeTypes = new Set([
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('admin', 'seller')
 export class PurchasesController {
-  constructor(private readonly purchasesService: PurchasesService) {}
+  constructor(
+    private readonly purchasesService: PurchasesService,
+    private readonly storesService: StoresService,
+  ) {}
+
+  /** undefined = sin restricción (admin); array = solo esas tiendas (seller). */
+  private async resolveAllowedStoreIds(user: AuthedRequest['user']): Promise<string[] | undefined> {
+    if (user.role !== 'seller') {
+      return undefined;
+    }
+    const stores = await this.storesService.findMine(user.userId);
+    return stores.map((s) => s.id);
+  }
 
   @Get()
   async findAll(@Query() query: QueryPurchasesDto, @Req() req: AuthedRequest) {
@@ -51,13 +64,15 @@ export class PurchasesController {
   }
 
   @Post()
-  async create(@Body() payload: CreatePurchaseDto) {
-    return this.purchasesService.create(payload);
+  async create(@Body() payload: CreatePurchaseDto, @Req() req: AuthedRequest) {
+    const allowedStoreIds = await this.resolveAllowedStoreIds(req.user);
+    return this.purchasesService.create(payload, allowedStoreIds);
   }
 
   @Patch(':id')
-  async update(@Param('id') id: string, @Body() payload: UpdatePurchaseDto) {
-    return this.purchasesService.update(id, payload);
+  async update(@Param('id') id: string, @Body() payload: UpdatePurchaseDto, @Req() req: AuthedRequest) {
+    const allowedStoreIds = await this.resolveAllowedStoreIds(req.user);
+    return this.purchasesService.update(id, payload, allowedStoreIds);
   }
 
   @Post(':id/payments')
@@ -76,16 +91,19 @@ export class PurchasesController {
   async registerPayment(
     @Param('id') id: string,
     @Body() payload: RegisterPurchasePaymentDto,
+    @Req() req: AuthedRequest,
     @UploadedFile() receiptImage?: Express.Multer.File,
   ) {
     if (receiptImage && !isValidImageBuffer(receiptImage.buffer)) {
       throw new BadRequestException('El comprobante no es una imagen JPEG, PNG o WebP válida');
     }
-    return this.purchasesService.registerPayment(id, payload, receiptImage);
+    const allowedStoreIds = await this.resolveAllowedStoreIds(req.user);
+    return this.purchasesService.registerPayment(id, payload, receiptImage, allowedStoreIds);
   }
 
   @Post(':id/cancel')
-  async cancel(@Param('id') id: string, @Body() payload: CancelPurchaseDto) {
-    return this.purchasesService.cancel(id, payload);
+  async cancel(@Param('id') id: string, @Body() payload: CancelPurchaseDto, @Req() req: AuthedRequest) {
+    const allowedStoreIds = await this.resolveAllowedStoreIds(req.user);
+    return this.purchasesService.cancel(id, payload, allowedStoreIds);
   }
 }

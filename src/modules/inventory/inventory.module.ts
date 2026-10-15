@@ -8,6 +8,7 @@ import { InventoryBatch } from './entities/inventory-batch.entity';
 import { InventoryBatchAllocation } from './entities/inventory-batch-allocation.entity';
 import { Supplier } from '../suppliers/entities/supplier.entity';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { StoresModule } from '../stores/stores.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
       InventoryBatchAllocation,
       Supplier,
     ]),
+    StoresModule,
   ],
   controllers: [InventoryController],
   providers: [InventoryService, RolesGuard],

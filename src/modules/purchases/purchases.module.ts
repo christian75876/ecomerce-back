@@ -11,6 +11,7 @@ import { Product } from '../products/entities/product.entity';
 import { InventoryModule } from '../inventory/inventory.module';
 import { InventoryBatch } from '../inventory/entities/inventory-batch.entity';
 import { CloudinaryModule } from '../cloudinary/cloudinary.module';
+import { StoresModule } from '../stores/stores.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { CloudinaryModule } from '../cloudinary/cloudinary.module';
     ]),
     InventoryModule,
     CloudinaryModule,
+    StoresModule,
   ],
   controllers: [PurchasesController],
   providers: [PurchasesService],

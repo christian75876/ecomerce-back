@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -19,7 +20,7 @@ export class CategoriesService {
     private readonly productsRepository: Repository<Product>,
   ) {}
 
-  async findAll(active?: boolean, storeId?: string) {
+  async findAll(active?: boolean, storeId?: string, allowedStoreIds?: string[]) {
     const qb = this.categoriesRepository
       .createQueryBuilder('category')
       .loadRelationCountAndMap('category.productCount', 'category.products');
@@ -27,7 +28,16 @@ export class CategoriesService {
     if (typeof active === 'boolean') {
       qb.andWhere('category.isActive = :active', { active });
     }
-    if (storeId) {
+
+    if (allowedStoreIds) {
+      // Panel de gestión del vendedor: ve sus propias categorías + las
+      // globales (storeId null, compartidas), nunca las de otra tienda.
+      if (storeId && !allowedStoreIds.includes(storeId)) {
+        throw new ForbiddenException('No tienes acceso a esta tienda');
+      }
+      const scopedIds = storeId ? [storeId] : allowedStoreIds;
+      qb.andWhere('(category.storeId IN (:...scopedIds) OR category.storeId IS NULL)', { scopedIds });
+    } else if (storeId) {
       qb.andWhere('category.storeId = :storeId', { storeId });
     }
 
@@ -58,13 +68,19 @@ export class CategoriesService {
     return this.categoriesRepository.save(category);
   }
 
-  async update(id: string, updateCategoryDto: UpdateCategoryDto) {
+  async update(id: string, updateCategoryDto: UpdateCategoryDto, allowedStoreIds?: string[]) {
     const category = await this.categoriesRepository.findOne({
       where: { id },
     });
 
     if (!category) {
       throw new NotFoundException('Category not found');
+    }
+
+    // Un vendedor solo puede editar categorías de su(s) propia(s) tienda(s) —
+    // ni de otra tienda, ni las globales (storeId null), que son del admin.
+    if (allowedStoreIds && (!category.storeId || !allowedStoreIds.includes(category.storeId))) {
+      throw new ForbiddenException('No tienes permisos para editar esta categoría');
     }
 
     if (updateCategoryDto.name) {

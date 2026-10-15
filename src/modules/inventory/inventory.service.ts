@@ -1,10 +1,11 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, IsNull, LessThanOrEqual, MoreThan, Repository } from 'typeorm';
+import { EntityManager, In, IsNull, LessThanOrEqual, MoreThan, Repository } from 'typeorm';
 import {
   InventoryMovement,
   InventoryMovementType,
@@ -40,11 +41,42 @@ export class InventoryService {
     private readonly suppliersRepository: Repository<Supplier>,
   ) {}
 
-  async getInventorySummary(page = 1, limit = 20, storeId?: string): Promise<PaginatedResultDto<Record<string, unknown>>> {
+  /** Valida un storeId de query contra las tiendas permitidas del vendedor
+   * (undefined = admin, sin restricción). Si no se pide un storeId puntual,
+   * devuelve undefined para que el caller filtre por el set completo. */
+  private resolveScopedStoreId(storeId: string | undefined, allowedStoreIds?: string[]): string | undefined {
+    if (!allowedStoreIds) return storeId;
+    if (storeId) {
+      if (!allowedStoreIds.includes(storeId)) {
+        throw new ForbiddenException('No tienes acceso a esta tienda');
+      }
+      return storeId;
+    }
+    return undefined;
+  }
+
+  private assertProductStoreAllowed(product: Product, allowedStoreIds?: string[]) {
+    if (!allowedStoreIds) return;
+    if (!product.storeId || !allowedStoreIds.includes(product.storeId)) {
+      throw new ForbiddenException('No tienes permisos sobre este producto');
+    }
+  }
+
+  async getInventorySummary(
+    page = 1,
+    limit = 20,
+    storeId?: string,
+    allowedStoreIds?: string[],
+  ): Promise<PaginatedResultDto<Record<string, unknown>>> {
     const skip = (page - 1) * limit;
+    const scopedStoreId = this.resolveScopedStoreId(storeId, allowedStoreIds);
 
     const [products, totalItems] = await this.productsRepository.findAndCount({
-      where: storeId ? { storeId } : {},
+      where: scopedStoreId
+        ? { storeId: scopedStoreId }
+        : allowedStoreIds
+          ? { storeId: In(allowedStoreIds) }
+          : {},
       relations: ['category'],
       order: { createdAt: 'DESC' },
       skip,
@@ -103,14 +135,19 @@ export class InventoryService {
     };
   }
 
-  async getBatches(filters: QueryInventoryBatchesDto): Promise<PaginatedResultDto<Record<string, unknown>>> {
+  async getBatches(
+    filters: QueryInventoryBatchesDto,
+    allowedStoreIds?: string[],
+  ): Promise<PaginatedResultDto<Record<string, unknown>>> {
     const page = filters.page ?? 1;
     const limit = Math.min(filters.limit ?? 20, 500);
     const skip = (page - 1) * limit;
+    const scopedStoreId = this.resolveScopedStoreId(filters.storeId, allowedStoreIds);
 
     const where: Record<string, unknown> = {};
     if (filters.productId) where.productId = filters.productId;
-    if (filters.storeId) where.storeId = filters.storeId;
+    if (scopedStoreId) where.storeId = scopedStoreId;
+    else if (allowedStoreIds) where.storeId = In(allowedStoreIds);
     if (filters.supplierId) where.supplierId = filters.supplierId;
     if (filters.status) where.status = filters.status;
 
@@ -134,7 +171,10 @@ export class InventoryService {
     };
   }
 
-  async getExpiringBatches(filters: QueryExpiringInventoryDto): Promise<PaginatedResultDto<Record<string, unknown>>> {
+  async getExpiringBatches(
+    filters: QueryExpiringInventoryDto,
+    allowedStoreIds?: string[],
+  ): Promise<PaginatedResultDto<Record<string, unknown>>> {
     const page = filters.page ?? 1;
     const limit = Math.min(filters.limit ?? 20, 500);
     const skip = (page - 1) * limit;
@@ -143,6 +183,7 @@ export class InventoryService {
     today.setHours(0, 0, 0, 0);
     const threshold = new Date(today);
     threshold.setDate(threshold.getDate() + days);
+    const scopedStoreId = this.resolveScopedStoreId(filters.storeId, allowedStoreIds);
 
     const qb = this.batchesRepository
       .createQueryBuilder('batch')
@@ -152,8 +193,10 @@ export class InventoryService {
       .andWhere('batch.availableQuantity > 0')
       .andWhere('batch.expiresAt IS NOT NULL');
 
-    if (filters.storeId) {
-      qb.andWhere('batch.storeId = :storeId', { storeId: filters.storeId });
+    if (scopedStoreId) {
+      qb.andWhere('batch.storeId = :storeId', { storeId: scopedStoreId });
+    } else if (allowedStoreIds) {
+      qb.andWhere('batch.storeId IN (:...allowedStoreIds)', { allowedStoreIds });
     }
 
     qb.orderBy('batch.expiresAt', 'ASC').addOrderBy('batch.receivedAt', 'ASC');
@@ -172,15 +215,34 @@ export class InventoryService {
     };
   }
 
-  async getMovements(productId?: string, page = 1, limit = 20): Promise<PaginatedResultDto<Record<string, unknown>>> {
+  async getMovements(
+    productId?: string,
+    page = 1,
+    limit = 20,
+    storeId?: string,
+    allowedStoreIds?: string[],
+  ): Promise<PaginatedResultDto<Record<string, unknown>>> {
     const skip = (page - 1) * limit;
-    const [movements, totalItems] = await this.inventoryRepository.findAndCount({
-      where: productId ? { productId } : {},
-      order: { createdAt: 'DESC' },
-      skip,
-      take: limit,
-      relations: ['product', 'batch'],
-    });
+    const scopedStoreId = this.resolveScopedStoreId(storeId, allowedStoreIds);
+
+    // InventoryMovement no tiene storeId propio — se filtra por tienda vía
+    // el producto al que pertenece el movimiento.
+    const qb = this.inventoryRepository
+      .createQueryBuilder('movement')
+      .leftJoinAndSelect('movement.product', 'product')
+      .leftJoinAndSelect('movement.batch', 'batch')
+      .orderBy('movement.createdAt', 'DESC')
+      .skip(skip)
+      .take(limit);
+
+    if (productId) qb.andWhere('movement.productId = :productId', { productId });
+    if (scopedStoreId) {
+      qb.andWhere('product.storeId = :storeId', { storeId: scopedStoreId });
+    } else if (allowedStoreIds) {
+      qb.andWhere('product.storeId IN (:...allowedStoreIds)', { allowedStoreIds });
+    }
+
+    const [movements, totalItems] = await qb.getManyAndCount();
     return {
       items: movements as unknown as Record<string, unknown>[],
       pagination: {
@@ -193,7 +255,7 @@ export class InventoryService {
     };
   }
 
-  async registerEntry(createInventoryEntryDto: CreateInventoryEntryDto) {
+  async registerEntry(createInventoryEntryDto: CreateInventoryEntryDto, allowedStoreIds?: string[]) {
     const product = await this.productsRepository.findOne({
       where: { id: createInventoryEntryDto.productId },
     });
@@ -201,6 +263,8 @@ export class InventoryService {
     if (!product) {
       throw new NotFoundException('Product not found');
     }
+
+    this.assertProductStoreAllowed(product, allowedStoreIds);
 
     if (createInventoryEntryDto.supplierId) {
       const supplier = await this.suppliersRepository.findOne({
@@ -232,7 +296,7 @@ export class InventoryService {
     });
   }
 
-  async registerMovement(createInventoryMovementDto: CreateInventoryMovementDto) {
+  async registerMovement(createInventoryMovementDto: CreateInventoryMovementDto, allowedStoreIds?: string[]) {
     const product = await this.productsRepository.findOne({
       where: { id: createInventoryMovementDto.productId },
     });
@@ -240,6 +304,8 @@ export class InventoryService {
     if (!product) {
       throw new NotFoundException('Product not found');
     }
+
+    this.assertProductStoreAllowed(product, allowedStoreIds);
 
     if (
       ![

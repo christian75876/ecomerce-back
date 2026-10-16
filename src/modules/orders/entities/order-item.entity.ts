@@ -31,4 +31,12 @@ export class OrderItem {
 
   @Column({ name: 'line_total', type: 'decimal', precision: 12, scale: 2 })
   lineTotal: number;
+
+  // Copia del IVA al momento de la venta: si luego se edita el producto, el
+  // recibo no cambia. lineTotal ya incluye taxAmount.
+  @Column({ name: 'tax_rate', type: 'decimal', precision: 5, scale: 2, default: 0 })
+  taxRate: number;
+
+  @Column({ name: 'tax_amount', type: 'decimal', precision: 12, scale: 2, default: 0 })
+  taxAmount: number;
 }

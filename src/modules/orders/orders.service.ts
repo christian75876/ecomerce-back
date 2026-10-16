@@ -14,6 +14,7 @@ import { SubmitPaymentDto } from './dto/submit-payment.dto';
 import { InventoryReferenceType } from '../inventory/entities/inventory-batch-allocation.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CouponsService } from '../coupons/coupons.service';
+import { computeLineTax, summarizeTax } from 'src/common/utils/tax';
 import { EmailService } from '../auth/email.service';
 import { PushService } from '../push/push.service';
 
@@ -213,14 +214,13 @@ export class OrdersService {
           storeMap.set(product.store.id, product.store);
         }
 
-        const lineTotal = Number(product.price) * item.quantity;
-        total += lineTotal;
+        const line = computeLineTax(product.price, item.quantity, product.taxMode, product.taxRate);
+        total += line.lineTotal;
 
         items.push({
           productId: product.id,
           quantity: item.quantity,
-          unitPrice: Number(product.price),
-          lineTotal,
+          ...line,
         });
       }
 
@@ -273,11 +273,12 @@ export class OrdersService {
         }
       }
 
-      const finalTotal = Math.max(0, total - discountAmount);
+      const { total: finalTotal, taxTotal } = summarizeTax(items, discountAmount);
 
       const order = manager.create(Order, {
         customerId: customer.id,
         total: finalTotal,
+        taxTotal,
         status: OrderStatus.PENDING,
         deliveryMethod: createOrderDto.deliveryMethod ?? null,
         deliveryAddress: createOrderDto.deliveryAddress?.trim() || null,

@@ -2,6 +2,7 @@ import {
   IsArray,
   IsDateString,
   IsBoolean,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsNumber,
@@ -12,6 +13,7 @@ import {
   Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { PRODUCT_TAX_MODES, PRODUCT_TAX_RATES, ProductTaxMode } from '../entities/product.entity';
 
 export class CreateProductDto {
   @IsString({ message: 'El nombre debe ser texto' })
@@ -145,4 +147,13 @@ export class CreateProductDto {
   @IsString({ message: 'La unidad de dimensiones debe ser texto' })
   @MaxLength(10, { message: 'La unidad de dimensiones no puede superar 10 caracteres' })
   dimensionsUnit?: string;
+
+  @IsOptional()
+  @IsIn(PRODUCT_TAX_MODES, { message: 'El tipo de IVA no es válido' })
+  taxMode?: ProductTaxMode | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsIn(PRODUCT_TAX_RATES, { message: 'La tarifa de IVA debe ser 19% o 5%' })
+  taxRate?: number;
 }

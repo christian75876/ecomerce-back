@@ -54,6 +54,10 @@ export class Sale {
   @Column({ type: 'decimal', precision: 12, scale: 2 })
   total: number;
 
+  // IVA contenido en total. Base sin IVA = total - taxTotal.
+  @Column({ name: 'tax_total', type: 'decimal', precision: 12, scale: 2, default: 0 })
+  taxTotal: number;
+
   // Guest (unregistered) customer data
   @Column({ name: 'guest_name',     type: 'varchar', length: 160, nullable: true })
   guestName: string | null;

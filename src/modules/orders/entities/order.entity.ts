@@ -55,6 +55,10 @@ export class Order {
   @Column({ type: 'decimal', precision: 12, scale: 2 })
   total: number;
 
+  // IVA contenido en total (ya prorrateado por el cupón). Base sin IVA = total - taxTotal.
+  @Column({ name: 'tax_total', type: 'decimal', precision: 12, scale: 2, default: 0 })
+  taxTotal: number;
+
   @Column({
     name: 'delivery_method',
     type: 'enum',

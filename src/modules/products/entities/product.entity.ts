@@ -16,6 +16,10 @@ import { Supplier } from '../../suppliers/entities/supplier.entity';
 import { InventoryBatch } from '../../inventory/entities/inventory-batch.entity';
 import { MenuCategory } from '../../menu-categories/entities/menu-category.entity';
 
+export const PRODUCT_TAX_MODES = ['INCLUDED', 'EXCLUDED'] as const;
+export type ProductTaxMode = (typeof PRODUCT_TAX_MODES)[number];
+export const PRODUCT_TAX_RATES = [19, 5] as const;
+
 @Entity('products')
 export class Product {
   @PrimaryGeneratedColumn('uuid')
@@ -38,6 +42,15 @@ export class Product {
 
   @Column({ name: 'compare_at_price', type: 'decimal', precision: 12, scale: 2, nullable: true })
   compareAtPrice: number | null;
+
+  // 'INCLUDED' = el precio ya trae IVA, 'EXCLUDED' = "+ IVA" (se suma al
+  // cobrar), null = sin IVA. Ver computeLineTax en common/utils/tax.ts.
+  @Column({ name: 'tax_mode', type: 'varchar', length: 10, nullable: true })
+  taxMode: ProductTaxMode | null;
+
+  // Tarifa en porcentaje (19 o 5). Solo se usa si taxMode no es null.
+  @Column({ name: 'tax_rate', type: 'decimal', precision: 5, scale: 2, default: 19 })
+  taxRate: number;
 
   @Column({ name: 'image_url', type: 'varchar', length: 500, nullable: true })
   imageUrl: string | null;

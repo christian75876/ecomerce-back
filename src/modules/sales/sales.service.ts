@@ -12,6 +12,7 @@ import { CustomersService } from '../customers/customers.service';
 import { CashService } from '../cash/cash.service';
 import { AuditService } from '../audit/audit.service';
 import { InventoryReferenceType } from '../inventory/entities/inventory-batch-allocation.entity';
+import { computeLineTax, summarizeTax } from 'src/common/utils/tax';
 import { Order, DeliveryMethod, PaymentStatus } from '../orders/entities/order.entity';
 
 // Ventana de registros recientes que se combinan en memoria para el historial
@@ -26,6 +27,8 @@ interface UnifiedSaleItem {
   quantity: number;
   unitPrice: number;
   lineTotal: number;
+  taxRate: number;
+  taxAmount: number;
   product: { id: string; name: string; sku: string | null };
 }
 
@@ -38,6 +41,7 @@ export interface UnifiedSale {
   storeId: string | null;
   cashSessionId: string | null;
   total: number;
+  taxTotal: number;
   createdAt: string;
   customer: { id: string; firstName: string; lastName: string } | null;
   store: { id: string; name: string } | null;
@@ -255,6 +259,7 @@ export class SalesService {
       storeId: sale.storeId,
       cashSessionId: sale.cashSessionId,
       total: Number(sale.total),
+      taxTotal: Number(sale.taxTotal ?? 0),
       createdAt: sale.createdAt.toISOString(),
       customer: sale.customer
         ? { id: sale.customer.id, firstName: sale.customer.firstName, lastName: sale.customer.lastName }
@@ -274,6 +279,8 @@ export class SalesService {
         quantity: i.quantity,
         unitPrice: Number(i.unitPrice),
         lineTotal: Number(i.lineTotal),
+        taxRate: Number(i.taxRate ?? 0),
+        taxAmount: Number(i.taxAmount ?? 0),
         product: { id: i.product.id, name: i.product.name, sku: i.product.sku },
       })),
     };
@@ -354,6 +361,9 @@ export class SalesService {
     const total = scopedStoreIds
       ? relevantItems.reduce((sum, i) => sum + Number(i.lineTotal), 0)
       : Number(order.total);
+    const taxTotal = scopedStoreIds
+      ? relevantItems.reduce((sum, i) => sum + Number(i.taxAmount ?? 0), 0)
+      : Number(order.taxTotal ?? 0);
     const storeFromItem = relevantItems.find((i) => i.product?.store)?.product.store ?? null;
 
     return {
@@ -365,6 +375,7 @@ export class SalesService {
       storeId: storeFromItem?.id ?? null,
       cashSessionId: null,
       total,
+      taxTotal,
       createdAt: (order.paymentConfirmedAt ?? order.createdAt).toISOString(),
       customer: order.customer
         ? { id: order.customer.id, firstName: order.customer.firstName, lastName: order.customer.lastName }
@@ -389,6 +400,8 @@ export class SalesService {
         quantity: i.quantity,
         unitPrice: Number(i.unitPrice),
         lineTotal: Number(i.lineTotal),
+        taxRate: Number(i.taxRate ?? 0),
+        taxAmount: Number(i.taxAmount ?? 0),
         product: { id: i.product.id, name: i.product.name, sku: i.product.sku },
       })),
       orderId: order.id,
@@ -409,7 +422,6 @@ export class SalesService {
       const productsRepository = manager.getRepository(Product);
       const customersRepository = manager.getRepository(Customer);
       const items = [];
-      let total = 0;
       const paymentMethod = createSaleDto.paymentMethod ?? SalePaymentMethod.CASH;
 
       if (paymentMethod === SalePaymentMethod.CREDIT && !createSaleDto.storeId) {
@@ -451,19 +463,18 @@ export class SalesService {
           );
         }
 
-        const lineTotal = Number(product.price) * item.quantity;
-        total += lineTotal;
-
         items.push({
           productId: product.id,
           quantity: item.quantity,
-          unitPrice: Number(product.price),
-          lineTotal,
+          ...computeLineTax(product.price, item.quantity, product.taxMode, product.taxRate),
         });
       }
 
+      const { total, taxTotal } = summarizeTax(items);
+
       const sale = manager.create(Sale, {
         total,
+        taxTotal,
         paymentMethod,
         customerId: customer?.id ?? null,
         storeId: createSaleDto.storeId ?? null,

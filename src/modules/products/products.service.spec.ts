@@ -74,7 +74,7 @@ describe('ProductsService — aislamiento por tienda', () => {
         { provide: getRepositoryToken(Customer), useFactory: createRepoMock },
         { provide: getRepositoryToken(SaleItem), useFactory: createRepoMock },
         { provide: InventoryService, useValue: { createSystemBatchEntry: jest.fn(), getCurrentStock: jest.fn() } },
-        { provide: CloudinaryService, useValue: { uploadImage: jest.fn(), deleteImage: jest.fn() } },
+        { provide: CloudinaryService, useValue: { uploadImage: jest.fn(), uploadFromUrl: jest.fn(), deleteImage: jest.fn() } },
       ],
     }).compile();
 

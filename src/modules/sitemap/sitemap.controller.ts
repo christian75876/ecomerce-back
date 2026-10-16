@@ -19,7 +19,18 @@ const escapeXml = (value: string): string =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;');
 
-const STATIC_PATHS = ['/bienvenida', '/home', '/stores', '/stores/map', '/ayuda', '/terminos', '/privacidad'];
+// Fecha del último cambio de contenido de las páginas estáticas. Actualizarla
+// cuando cambie el texto de la página en el frontend; /terminos y /privacidad
+// deben coincidir con LAST_UPDATED de TermsPage.tsx / PrivacyPage.tsx.
+const STATIC_CONTENT_DATES: Record<string, string> = {
+  '/bienvenida': '2026-10-15',
+  '/ayuda': '2026-10-15',
+  '/terminos': '2026-08-25',
+  '/privacidad': '2026-08-25',
+};
+
+const latest = (dates: (Date | null | undefined)[]): Date | null =>
+  dates.reduce<Date | null>((max, d) => (d && (!max || new Date(d) > max) ? new Date(d) : max), null);
 
 @Controller()
 export class SitemapController {
@@ -45,7 +56,20 @@ export class SitemapController {
         .getMany(),
     ]);
 
-    const staticUrls = STATIC_PATHS.map((path) => `  <url><loc>${base}${path}</loc></url>`);
+    // /home y /stores (y el mapa) listan productos y tiendas: cambian cuando
+    // cambia el último producto o tienda.
+    const lastProductChange = latest(activeProducts.map((p) => p.updatedAt));
+    const lastStoreChange = latest(activeStores.map((s) => s.updatedAt));
+    const staticPages: [string, Date | null][] = [
+      ['/bienvenida', new Date(STATIC_CONTENT_DATES['/bienvenida'])],
+      ['/home', lastProductChange],
+      ['/stores', lastStoreChange],
+      ['/stores/map', lastStoreChange],
+      ['/ayuda', new Date(STATIC_CONTENT_DATES['/ayuda'])],
+      ['/terminos', new Date(STATIC_CONTENT_DATES['/terminos'])],
+      ['/privacidad', new Date(STATIC_CONTENT_DATES['/privacidad'])],
+    ];
+    const staticUrls = staticPages.map(([path, date]) => `  <url><loc>${base}${path}</loc>${toLastmod(date)}</url>`);
 
     const storeUrls = activeStores.map(
       (s) => `  <url><loc>${escapeXml(`${base}/stores/${s.slug}`)}</loc>${toLastmod(s.updatedAt)}</url>`,

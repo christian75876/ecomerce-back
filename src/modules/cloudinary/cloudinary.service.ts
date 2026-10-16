@@ -35,6 +35,20 @@ export class CloudinaryService {
     });
   }
 
+  // Cloudinary descarga la URL remota desde sus propios servidores (no desde
+  // la API), así que no abre una vía de SSRF hacia la red interna.
+  async uploadFromUrl(url: string, folder: string): Promise<string> {
+    const transforms = FOLDER_TRANSFORMS[folder] ?? {};
+    const result = await cloudinary.uploader.upload(url, {
+      folder: `marketplace/${folder}`,
+      quality: 'auto',
+      fetch_format: 'auto',
+      resource_type: 'image',
+      ...transforms,
+    });
+    return result.secure_url;
+  }
+
   async deleteImage(publicId: string): Promise<void> {
     await cloudinary.uploader.destroy(publicId);
   }

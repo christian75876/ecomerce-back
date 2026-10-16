@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -46,6 +47,8 @@ function detectVideoType(url: string): VideoType {
 
 @Injectable()
 export class ProductsService {
+  private readonly logger = new Logger(ProductsService.name);
+
   constructor(
     @InjectRepository(Product)
     private readonly productsRepository: Repository<Product>,
@@ -481,6 +484,22 @@ export class ProductsService {
     };
   }
 
+  // Imágenes pegadas como URL de otro sitio (p. ej. la web del fabricante) se
+  // copian a Cloudinary: si el sitio original cambia o bloquea el hotlinking,
+  // la ficha, la vista previa en redes y el schema.org quedaban rotos, y
+  // servirlas desde nuestro dominio de imágenes evita depender de terceros.
+  // Si la copia falla se conserva la URL original para no bloquear el guardado.
+  private async rehostExternalImage(url: string | null, folder: string): Promise<string | null> {
+    if (!url || !/^https?:\/\//i.test(url)) return url;
+    try {
+      if (new URL(url).hostname === 'res.cloudinary.com') return url;
+      return await this.cloudinaryService.uploadFromUrl(url, folder);
+    } catch (error) {
+      this.logger.warn(`No se pudo copiar la imagen externa ${url} a Cloudinary: ${(error as Error).message}`);
+      return url;
+    }
+  }
+
   async create(createProductDto: CreateProductDto, allowedStoreIds?: string[]) {
     if (allowedStoreIds) {
       // Vendedor: el producto SIEMPRE debe quedar en una de sus propias
@@ -504,6 +523,7 @@ export class ProductsService {
     const initialStock = Number(createProductDto.initialStock ?? 0);
     const initialCost =
       typeof createProductDto.cost === 'number' ? createProductDto.cost : 0;
+    const imageUrl = await this.rehostExternalImage(createProductDto.imageUrl?.trim() || null, 'products');
 
     if (createProductDto.isPerishable && initialStock > 0 && !createProductDto.initialExpiresAt) {
       throw new ConflictException(
@@ -517,7 +537,7 @@ export class ProductsService {
         name: createProductDto.name.trim(),
         description: createProductDto.description.trim(),
         sku: createProductDto.sku ? createProductDto.sku.trim().toUpperCase() : null,
-        imageUrl: createProductDto.imageUrl?.trim() || null,
+        imageUrl,
         cost: typeof createProductDto.cost === 'number' ? createProductDto.cost : null,
         compareAtPrice: typeof createProductDto.compareAtPrice === 'number' ? createProductDto.compareAtPrice : null,
         showStock: createProductDto.showStock ?? false,
@@ -594,6 +614,14 @@ export class ProductsService {
       await this.ensureUniqueSku(updateProductDto.sku, id);
     }
 
+    // Solo se copia si la URL cambió: el formulario de edición reenvía la
+    // imagen actual en cada guardado.
+    let imageUrl = product.imageUrl;
+    if (typeof updateProductDto.imageUrl === 'string') {
+      const requested = updateProductDto.imageUrl.trim() || null;
+      imageUrl = requested === product.imageUrl ? requested : await this.rehostExternalImage(requested, 'products');
+    }
+
     Object.assign(product, {
       ...updateProductDto,
       name: updateProductDto.name?.trim() ?? product.name,
@@ -623,10 +651,7 @@ export class ProductsService {
         typeof updateProductDto.trackBatches === 'boolean'
           ? updateProductDto.trackBatches
           : product.trackBatches,
-      imageUrl:
-        typeof updateProductDto.imageUrl === 'string'
-          ? updateProductDto.imageUrl.trim() || null
-          : product.imageUrl,
+      imageUrl,
       lowStockThreshold:
         typeof updateProductDto.lowStockThreshold === 'number'
           ? updateProductDto.lowStockThreshold
@@ -962,6 +987,7 @@ export class ProductsService {
     }
 
     const count = await this.variantsRepository.count({ where: { productId } });
+    const imageUrl = await this.rehostExternalImage(dto.imageUrl?.trim() || null, 'products');
     const variant = this.variantsRepository.create({
       ...dto,
       productId,
@@ -969,7 +995,7 @@ export class ProductsService {
       size: dto.size?.trim() || null,
       color: dto.color?.trim() || null,
       colorHex: dto.colorHex?.trim() || null,
-      imageUrl: dto.imageUrl?.trim() || null,
+      imageUrl,
       stock: dto.stock ?? 0,
       isActive: dto.isActive ?? true,
       order: dto.order ?? count,
@@ -994,13 +1020,19 @@ export class ProductsService {
       if (existing) throw new ConflictException('El SKU de la variante ya está en uso');
     }
 
+    let imageUrl = variant.imageUrl;
+    if (dto.imageUrl !== undefined) {
+      const requested = dto.imageUrl?.trim() || null;
+      imageUrl = requested === variant.imageUrl ? requested : await this.rehostExternalImage(requested, 'products');
+    }
+
     Object.assign(variant, {
       ...dto,
       sku: dto.sku !== undefined ? (dto.sku ? dto.sku.trim().toUpperCase() : null) : variant.sku,
       size: dto.size !== undefined ? (dto.size?.trim() || null) : variant.size,
       color: dto.color !== undefined ? (dto.color?.trim() || null) : variant.color,
       colorHex: dto.colorHex !== undefined ? (dto.colorHex?.trim() || null) : variant.colorHex,
-      imageUrl: dto.imageUrl !== undefined ? (dto.imageUrl?.trim() || null) : variant.imageUrl,
+      imageUrl,
     });
 
     return this.variantsRepository.save(variant);

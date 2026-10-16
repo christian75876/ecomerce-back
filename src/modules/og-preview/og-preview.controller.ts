@@ -94,6 +94,14 @@ export class OgPreviewController {
     return `${(lastSpace > 100 ? cut.slice(0, lastSpace) : cut).replace(/[,;:.\s]+$/, '')}…`;
   }
 
+  // "<producto> en <tienda> — Merku": el nombre de la tienda capta búsquedas
+  // de marca local. Se omite si el título pasaría de ~60 caracteres (Google
+  // lo cortaría). Mantener igual a productPageTitle() del frontend.
+  private productTitle(productName: string, storeName?: string | null): string {
+    const withStore = storeName ? `${productName} en ${storeName} — Merku` : null;
+    return withStore && withStore.length <= 60 ? withStore : `${productName} — Merku`;
+  }
+
   private nav(): string {
     const f = this.escapeHtml(this.frontendUrl);
     return `<header><nav aria-label="Principal"><a href="${f}/home">Merku</a> · <a href="${f}/home">Productos</a> · <a href="${f}/stores">Tiendas</a> · <a href="${f}/stores/map">Mapa de tiendas</a> · <a href="${f}/bienvenida">Vende en Merku</a> · <a href="${f}/ayuda">Ayuda</a></nav></header>`;
@@ -201,7 +209,8 @@ ${this.footer()}
       url,
       image: `${this.frontendUrl}/og-image.png`,
       ogType: 'website',
-      body: `<h1>${this.escapeHtml(title)}</h1>
+      // El <h1> sin la marca: "— Merku" solo tiene sentido en el <title>.
+      body: `<h1>${this.escapeHtml(title.replace(/ — Merku$/, ''))}</h1>
 <p>${this.escapeHtml(intro)}</p>
 <ul>
 ${itemsHtml}
@@ -244,10 +253,12 @@ ${itemsHtml}
       .take(48)
       .getMany();
 
+    // Título y descripción: mantener idénticos a STATIC_PAGE_META del Worker y
+    // al <Helmet> de HomePage.tsx.
     const html = this.buildListingHtml({
-      title: 'Merku — Encuentra lo que buscas',
+      title: 'Tiendas y restaurantes locales en Medellín — Merku',
       description:
-        'Merku: explora cientos de productos de tiendas locales. Encuentra lo que necesitas al mejor precio.',
+        'Compra en tiendas y restaurantes locales de Medellín desde un solo lugar: pide a domicilio o recoge en tienda y paga por transferencia. Explora Merku.',
       url: spaUrl,
       intro:
         'Merku es un marketplace colombiano donde tiendas y restaurantes locales publican su catálogo, reciben pedidos y venden en línea. Estos son los productos más recientes:',
@@ -277,10 +288,12 @@ ${itemsHtml}
       order: { createdAt: 'DESC' },
     });
 
+    // Título y descripción: mantener idénticos a STATIC_PAGE_META del Worker y
+    // al <Helmet> de StoresPage.tsx.
     const html = this.buildListingHtml({
-      title: 'Tiendas disponibles — Merku',
+      title: 'Directorio de tiendas locales en Medellín — Merku',
       description:
-        'Explora todas las tiendas y restaurantes disponibles en Merku. Encuentra productos locales y realiza tu pedido.',
+        'Conoce las tiendas y restaurantes locales de Medellín que venden en Merku: revisa su catálogo y ubicación y haz tu pedido a domicilio o para recoger.',
       url: spaUrl,
       intro: 'Tiendas y restaurantes locales que venden en Merku. Entra a cada una para ver su catálogo y hacer tu pedido.',
       items: stores.map((s) => ({
@@ -436,7 +449,7 @@ ${product.description ? `<h2>Descripción</h2>\n<p>${e(product.description).repl
 
     res.type('html').send(
       this.buildPage({
-        title: `${product.name} — Merku`,
+        title: this.productTitle(product.name, store?.name),
         description,
         url,
         image: ogImage,

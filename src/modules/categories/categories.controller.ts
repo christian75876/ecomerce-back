@@ -3,6 +3,7 @@ import {
   Controller,
   ForbiddenException,
   Get,
+  NotFoundException,
   Param,
   ParseBoolPipe,
   Patch,
@@ -20,12 +21,15 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { AuthedRequest } from 'src/common/types/authed-request';
 import { StoresService } from '../stores/stores.service';
+import { DataSource } from 'typeorm';
+import { findPublicCategoryCollection, findPublicCategoryCollections } from './category-collections';
 
 @Controller('categories')
 export class CategoriesController {
   constructor(
     private readonly categoriesService: CategoriesService,
     private readonly storesService: StoresService,
+    private readonly dataSource: DataSource,
   ) {}
 
   /** undefined = sin restricción (admin); array = solo esas tiendas (seller). */
@@ -44,6 +48,25 @@ export class CategoriesController {
     @Query('storeId') storeId?: string,
   ) {
     return this.categoriesService.findAll(active, storeId);
+  }
+
+  // Catálogo público por categoría (/categorias y /categorias/:slug): agrupa
+  // por nombre las categorías de todas las tiendas. categoryIds no se expone:
+  // el frontend filtra productos por slug (GET /products?categorySlug=).
+  @Get('collections')
+  @Throttle({ default: { limit: 300, ttl: 60_000 } })
+  async findCollections() {
+    const collections = await findPublicCategoryCollections(this.dataSource.manager);
+    return collections.map(({ categoryIds: _ids, ...collection }) => collection);
+  }
+
+  @Get('collections/:slug')
+  @Throttle({ default: { limit: 300, ttl: 60_000 } })
+  async findCollection(@Param('slug') slug: string) {
+    const collection = await findPublicCategoryCollection(this.dataSource.manager, slug);
+    if (!collection) throw new NotFoundException('Categoría no encontrada');
+    const { categoryIds: _ids, ...rest } = collection;
+    return rest;
   }
 
   // Panel de gestión (seller/admin): a diferencia de GET /categories

@@ -5,6 +5,7 @@ import { Response } from 'express';
 import { Store } from '../stores/entities/store.entity';
 import { Product } from '../products/entities/product.entity';
 import { buildProductPath } from '../../common/utils/product-url';
+import { findPublicCategoryCollections } from '../categories/category-collections';
 
 // Google ignora <changefreq> y <priority>; lo que sí usa es <lastmod> (cuando
 // es preciso) para decidir qué volver a rastrear.
@@ -41,7 +42,12 @@ export class SitemapController {
 
   @Get('sitemap.xml')
   async getSitemap(@Res() res: Response) {
-    const base = (process.env.FRONTEND_URL ?? 'http://localhost:5173').replace(/\/$/, '');
+    // Por defecto producción: si FRONTEND_URL faltara en un deploy, un sitemap
+    // con URLs de localhost le diría a Google que el sitio entero se movió ahí.
+    const base = (process.env.FRONTEND_URL ?? 'https://merku.co').replace(/\/$/, '');
+    const apiBase = (process.env.API_PUBLIC_URL ?? 'https://api.merku.co').replace(/\/$/, '');
+    const absoluteImage = (path: string | null | undefined): string | null =>
+      !path ? null : /^https?:\/\//i.test(path) ? path : `${apiBase}${path.startsWith('/') ? path : `/${path}`}`;
 
     // Productos de tiendas desactivadas responden 404 (ver og-preview): no
     // deben estar en el sitemap. Productos sin tienda (storeId null) sí.
@@ -52,7 +58,7 @@ export class SitemapController {
         .leftJoin('product.store', 'store')
         .where('product.isActive = true')
         .andWhere('(store.id IS NULL OR store.isActive = true)')
-        .select(['product.id', 'product.name', 'product.updatedAt'])
+        .select(['product.id', 'product.name', 'product.imageUrl', 'product.updatedAt'])
         .getMany(),
     ]);
 
@@ -71,19 +77,34 @@ export class SitemapController {
     ];
     const staticUrls = staticPages.map(([path, date]) => `  <url><loc>${base}${path}</loc>${toLastmod(date)}</url>`);
 
+    // Solo las indexables: las de pocos productos llevan noindex y Google
+    // marca como error un sitemap que lista páginas noindex.
+    const collections = await findPublicCategoryCollections(this.products.manager);
+    const lastCategoryChange = latest(collections.map((c) => c.lastModified));
+    const categoryUrls = [
+      `  <url><loc>${base}/categorias</loc>${toLastmod(lastCategoryChange)}</url>`,
+      ...collections
+        .filter((c) => c.indexable)
+        .map((c) => `  <url><loc>${escapeXml(`${base}/categorias/${c.slug}`)}</loc>${toLastmod(c.lastModified)}</url>`),
+    ];
+
     const storeUrls = activeStores.map(
       (s) => `  <url><loc>${escapeXml(`${base}/stores/${s.slug}`)}</loc>${toLastmod(s.updatedAt)}</url>`,
     );
 
-    const productUrls = activeProducts.map(
-      (p) =>
-        `  <url><loc>${escapeXml(`${base}${buildProductPath(p.id, p.name)}`)}</loc>${toLastmod(p.updatedAt)}</url>`,
-    );
+    // <image:image>: la foto principal entra a Google Imágenes asociada a la
+    // ficha (canal de tráfico grande en e-commerce).
+    const productUrls = activeProducts.map((p) => {
+      const image = absoluteImage(p.imageUrl);
+      const imageTag = image ? `<image:image><image:loc>${escapeXml(image)}</image:loc></image:image>` : '';
+      return `  <url><loc>${escapeXml(`${base}${buildProductPath(p.id, p.name)}`)}</loc>${toLastmod(p.updatedAt)}${imageTag}</url>`;
+    });
 
     const xml = [
       '<?xml version="1.0" encoding="UTF-8"?>',
-      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">',
       ...staticUrls,
+      ...categoryUrls,
       ...storeUrls,
       ...productUrls,
       '</urlset>',

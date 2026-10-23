@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsBoolean, IsIn, IsNumber, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsBoolean, IsIn, IsNumber, IsOptional, IsString, IsUUID, Matches } from 'class-validator';
 import { PaginationQueryDto } from 'src/common/dtos/pagination-query.dto';
 
 const PRODUCT_SORT_OPTIONS = ['newest', 'price_asc', 'price_desc', 'name_asc', 'random'] as const;
@@ -12,6 +12,12 @@ export class QueryProductsDto extends PaginationQueryDto {
   @IsOptional()
   @IsUUID('4')
   categoryId?: string;
+
+  // Página pública /categorias/:slug: agrupa las categorías de todas las
+  // tiendas con ese nombre (ver categories/category-collections.ts).
+  @IsOptional()
+  @Matches(/^[a-z0-9-]{1,80}$/)
+  categorySlug?: string;
 
   @IsOptional()
   @IsUUID('4')

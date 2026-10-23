@@ -7,7 +7,17 @@ import { Product } from '../products/entities/product.entity';
 import {
   buildProductPath,
   extractProductId,
+  slugify,
 } from '../../common/utils/product-url';
+import { normalizeTitleCase } from '../../common/utils/text-case';
+import {
+  applyPublicCategoryVisibility,
+  CategoryCollection,
+  findPublicCategoryCollection,
+  findPublicCategoryCollections,
+} from '../categories/category-collections';
+import { buildProductOgCard, OG_CARD_HEIGHT, OG_CARD_WIDTH } from '../../common/utils/og-card';
+import { computeLineTax } from '../../common/utils/tax';
 
 // HTML que el Worker de Cloudflare (ecomerce/worker/index.js) sirve a bots que
 // no ejecutan JS: Googlebot, Bingbot, rastreadores de IA (GPTBot, ClaudeBot,
@@ -27,6 +37,19 @@ interface PageParams {
   description: string;
   url: string;
   image: string;
+  // Solo cuando se conocen (la tarjeta generada): Facebook/WhatsApp muestran la
+  // miniatura grande al primer share en vez de esperar a descargar la imagen.
+  imageSize?: { width: number; height: number };
+  imageAlt?: string;
+  // og:description / twitter:description, si debe diferir de la meta
+  // description (p. ej. con el precio al inicio para la previsualización).
+  ogDescription?: string;
+  // Contenido +18: Google lo excluye de SafeSearch solo si va etiquetado.
+  adult?: boolean;
+  // p. ej. "noindex, follow" para categorías con muy pocos productos.
+  robots?: string;
+  // <meta> adicionales, ya escapados (p. ej. product:price:amount).
+  extraHead?: string;
   ogType: string;
   body: string;
   jsonLd: object[];
@@ -48,7 +71,7 @@ export class OgPreviewController {
   }
 
   private isBot(ua: string): boolean {
-    return /bot|spider|crawl|whatsapp|facebookexternalhit|twitterbot|slackbot|telegrambot|discordbot|linkedinbot|googlebot|google-inspectiontool|chatgpt-user|perplexity-user|claude-user/i.test(
+    return /bot|spider|crawl|whatsapp|facebookexternalhit|twitterbot|slackbot|telegrambot|discordbot|linkedinbot|googlebot|google-inspectiontool|googleother|chatgpt-user|perplexity-user|claude-user|meta-externalagent|mistralai-user|bingpreview|viber|skypeuripreview|iframely|embedly/i.test(
       ua,
     );
   }
@@ -104,7 +127,7 @@ export class OgPreviewController {
 
   private nav(): string {
     const f = this.escapeHtml(this.frontendUrl);
-    return `<header><nav aria-label="Principal"><a href="${f}/home">Merku</a> · <a href="${f}/home">Productos</a> · <a href="${f}/stores">Tiendas</a> · <a href="${f}/stores/map">Mapa de tiendas</a> · <a href="${f}/bienvenida">Vende en Merku</a> · <a href="${f}/ayuda">Ayuda</a></nav></header>`;
+    return `<header><nav aria-label="Principal"><a href="${f}/home">Merku</a> · <a href="${f}/home">Productos</a> · <a href="${f}/categorias">Categorías</a> · <a href="${f}/stores">Tiendas</a> · <a href="${f}/stores/map">Mapa de tiendas</a> · <a href="${f}/bienvenida">Vende en Merku</a> · <a href="${f}/ayuda">Ayuda</a></nav></header>`;
   }
 
   private footer(): string {
@@ -113,11 +136,26 @@ export class OgPreviewController {
   }
 
   private buildPage(params: PageParams): string {
-    const { title, description, url, image, ogType, body, jsonLd } = params;
+    const { title, description, url, image, imageSize, imageAlt, ogDescription, adult, robots, extraHead, ogType, body, jsonLd } =
+      params;
     const safeTitle = this.escapeHtml(title);
     const safeDescription = this.escapeHtml(description);
+    const safeOgDescription = this.escapeHtml(ogDescription ?? description);
     const safeUrl = this.escapeHtml(url);
     const safeImage = this.escapeHtml(image);
+    const safeImageAlt = this.escapeHtml(imageAlt ?? title);
+    const imageType = /\/f_jpg[,/]|\.jpe?g$/i.test(image) ? 'image/jpeg' : /\.png$/i.test(image) ? 'image/png' : null;
+    const imageMeta = [
+      ...(image.startsWith('https://') ? [`<meta property="og:image:secure_url" content="${safeImage}">`] : []),
+      ...(imageType ? [`<meta property="og:image:type" content="${imageType}">`] : []),
+      ...(imageSize
+        ? [
+            `<meta property="og:image:width" content="${imageSize.width}">`,
+            `<meta property="og:image:height" content="${imageSize.height}">`,
+          ]
+        : []),
+      `<meta property="og:image:alt" content="${safeImageAlt}">`,
+    ].join('\n');
     return `<!DOCTYPE html>
 <html lang="es-CO">
 <head>
@@ -125,18 +163,21 @@ export class OgPreviewController {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${safeTitle}</title>
 <meta name="description" content="${safeDescription}">
-<link rel="canonical" href="${safeUrl}">
+${adult ? '<meta name="rating" content="adult">\n' : ''}${robots ? `<meta name="robots" content="${this.escapeHtml(robots)}">\n` : ''}<link rel="canonical" href="${safeUrl}">
 <meta property="og:type" content="${this.escapeHtml(ogType)}">
 <meta property="og:site_name" content="Merku">
 <meta property="og:locale" content="es_CO">
 <meta property="og:url" content="${safeUrl}">
 <meta property="og:title" content="${safeTitle}">
-<meta property="og:description" content="${safeDescription}">
+<meta property="og:description" content="${safeOgDescription}">
 <meta property="og:image" content="${safeImage}">
+${imageMeta}
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="${safeTitle}">
-<meta name="twitter:description" content="${safeDescription}">
+<meta name="twitter:description" content="${safeOgDescription}">
 <meta name="twitter:image" content="${safeImage}">
+<meta name="twitter:image:alt" content="${safeImageAlt}">
+${extraHead ?? ''}
 ${jsonLd.map((d) => this.jsonLd(d)).join('\n')}
 </head>
 <body>
@@ -370,14 +411,85 @@ ${itemsHtml}
     const images = [product.imageUrl, ...extraImages.map((i) => i.imageUrl)]
       .map((p) => this.absoluteAssetUrl(p))
       .filter((p, i, all): p is string => !!p && all.indexOf(p) === i);
-    const ogImage = images[0] ?? `${frontendUrl}/og-image.png`;
-    const inStock = Number(stockRow?.stock ?? 0) > 0;
+    // Sin control de lotes (trackBatches: false) nunca hay movimientos de
+    // inventario: el catálogo los trata como disponibles (ver onlyAvailable en
+    // ProductsService.findAll) y aquí debe ser igual, o Google los ve agotados.
+    const inStock = !product.trackBatches || Number(stockRow?.stock ?? 0) > 0;
     const reviewCount = Number(ratingRow?.reviewCount ?? 0);
     const store = product.store;
     const storeUrl = store ? `${frontendUrl}/stores/${store.slug}` : null;
-    const price = this.formatCOP(product.price);
+    const isAdult = !!store?.isAdultContent;
+    // Precio final que paga el cliente (con IVA si el producto es "+ IVA"): es
+    // el que exige Google y debe coincidir con merchant-feed.controller.ts.
+    const finalPrice = computeLineTax(product.price, 1, product.taxMode, product.taxRate).unitPrice;
+    const price = this.formatCOP(finalPrice);
     const hasDiscount =
       product.compareAtPrice != null && Number(product.compareAtPrice) > Number(product.price);
+    const finalCompareAt = hasDiscount
+      ? computeLineTax(product.compareAtPrice!, 1, product.taxMode, product.taxRate).unitPrice
+      : null;
+    const compareAtPrice = finalCompareAt != null ? this.formatCOP(finalCompareAt) : null;
+    const discountPercent = finalCompareAt != null ? Math.round((1 - finalPrice / finalCompareAt) * 100) : null;
+
+    // Tarjeta 1200x630 con foto + precio para WhatsApp/Facebook/X; si la foto no
+    // está en Cloudinary se usa tal cual. En tiendas +18 la foto va desenfocada
+    // (la previsualización la ve cualquiera en el chat, sin pasar el age gate).
+    const ogCard = buildProductOgCard({
+      imageUrl: images[0],
+      name: product.name,
+      storeName: store?.name,
+      price,
+      compareAtPrice,
+      discountPercent,
+      inStock,
+      blur: isAdult,
+    });
+    const ogImage = ogCard ?? (isAdult ? null : images[0]) ?? `${frontendUrl}/og-image.png`;
+    const e =(v: string) => this.escapeHtml(v);
+    // Etiquetas Open Graph de producto: Facebook/Instagram, Pinterest y Slack
+    // muestran precio y disponibilidad junto a la miniatura.
+    const productMeta = [
+      `<meta property="product:price:amount" content="${finalPrice}">`,
+      '<meta property="product:price:currency" content="COP">',
+      `<meta property="product:availability" content="${inStock ? 'in stock' : 'out of stock'}">`,
+      '<meta property="product:condition" content="new">',
+      `<meta property="product:retailer_item_id" content="${e(product.sku || product.id)}">`,
+      ...(product.brand ? [`<meta property="product:brand" content="${e(product.brand)}">`] : []),
+      ...(product.category?.name ? [`<meta property="product:category" content="${e(product.category.name)}">`] : []),
+      ...(hasDiscount
+        ? [
+            `<meta property="product:sale_price:amount" content="${finalPrice}">`,
+            '<meta property="product:sale_price:currency" content="COP">',
+            `<meta property="product:original_price:amount" content="${finalCompareAt}">`,
+            '<meta property="product:original_price:currency" content="COP">',
+          ]
+        : []),
+      '<meta name="twitter:label1" content="Precio">',
+      `<meta name="twitter:data1" content="${e(price)}">`,
+      ...(store
+        ? ['<meta name="twitter:label2" content="Vendido por">', `<meta name="twitter:data2" content="${e(store.name)}">`]
+        : []),
+    ].join('\n');
+
+    // Ley 1480 art. 47: retracto de 5 días hábiles; no aplica a perecederos ni
+    // a comida de restaurante (excepciones del mismo artículo).
+    const returnsAllowed = !product.isPerishable && store?.storeType !== StoreType.RESTAURANT;
+    const returnPolicyLd = returnsAllowed
+      ? {
+          '@type': 'MerchantReturnPolicy',
+          applicableCountry: 'CO',
+          returnPolicyCategory: 'https://schema.org/MerchantReturnFiniteReturnWindow',
+          merchantReturnDays: 5,
+          returnMethod: 'https://schema.org/ReturnByMail',
+          returnFees: 'https://schema.org/ReturnFeesCustomerResponsibility',
+          merchantReturnLink: `${frontendUrl}/terminos`,
+        }
+      : {
+          '@type': 'MerchantReturnPolicy',
+          applicableCountry: 'CO',
+          returnPolicyCategory: 'https://schema.org/MerchantReturnNotPermitted',
+          merchantReturnLink: `${frontendUrl}/terminos`,
+        };
 
     const description = this.metaDescription(
       product.description,
@@ -385,16 +497,31 @@ ${itemsHtml}
         ? `${product.name} a ${price} en ${store.name}. Pide en línea en Merku.`
         : `${product.name} a ${price}. Pide en línea en Merku.`,
     );
+    // Previsualización al compartir: precio primero, como MercadoLibre/Temu.
+    const ogDescription = [
+      hasDiscount ? `${price} (antes ${compareAtPrice}, -${discountPercent}%)` : price,
+      inStock ? null : 'Agotado',
+      store ? `Vendido por ${store.name}` : null,
+      description,
+    ]
+      .filter(Boolean)
+      .join(' · ');
 
-    const e = (v: string) => this.escapeHtml(v);
+    // Inicio › Categoría › Producto: la categoría es lo que la gente busca
+    // ("impresoras") y Google muestra esta ruta en el resultado. Los productos
+    // +18 no aparecen en páginas de categoría, así que conservan la ruta por tienda.
+    const categorySlug = product.category?.name && !isAdult ? slugify(product.category.name) : '';
+    const categoryUrl = categorySlug ? `${frontendUrl}/categorias/${categorySlug}` : null;
     const breadcrumbs = [
       { name: 'Inicio', url: `${frontendUrl}/home` },
-      ...(store && storeUrl
-        ? [
-            { name: 'Tiendas', url: `${frontendUrl}/stores` },
-            { name: store.name, url: storeUrl },
-          ]
-        : []),
+      ...(categoryUrl
+        ? [{ name: normalizeTitleCase(product.category!.name), url: categoryUrl }]
+        : store && storeUrl
+          ? [
+              { name: 'Tiendas', url: `${frontendUrl}/stores` },
+              { name: store.name, url: storeUrl },
+            ]
+          : []),
       { name: product.name, url },
     ];
 
@@ -404,10 +531,10 @@ ${itemsHtml}
 <article>
 <h1>${e(product.name)}</h1>
 ${images.map((src) => `<img src="${e(src)}" alt="${e(product.name)}" loading="lazy">`).join('\n')}
-<p><strong>Precio:</strong> ${e(price)}${hasDiscount ? ` <s>${e(this.formatCOP(Number(product.compareAtPrice)))}</s>` : ''}</p>
+<p><strong>Precio:</strong> ${e(price)}${product.taxMode ? ' (IVA incluido)' : ''}${hasDiscount ? ` <s>${e(compareAtPrice ?? '')}</s>` : ''}</p>
 <p><strong>Disponibilidad:</strong> ${inStock ? 'Disponible' : 'Agotado'}</p>
 ${product.brand ? `<p><strong>Marca:</strong> ${e(product.brand)}</p>` : ''}
-${product.category?.name ? `<p><strong>Categoría:</strong> ${e(product.category.name)}</p>` : ''}
+${product.category?.name ? `<p><strong>Categoría:</strong> ${categoryUrl ? `<a href="${e(categoryUrl)}">${e(product.category.name)}</a>` : e(product.category.name)}</p>` : ''}
 ${store && storeUrl ? `<p><strong>Vendido por:</strong> <a href="${e(storeUrl)}">${e(store.name)}</a>${store.addressText && !store.hideLocation ? ` — ${e(store.addressText)}` : ''}</p>` : ''}
 ${reviewCount > 0 ? `<p><strong>Calificación:</strong> ${e(String(ratingRow?.averageRating))} de 5 (${reviewCount} reseñas)</p>` : ''}
 ${product.description ? `<h2>Descripción</h2>\n<p>${e(product.description).replace(/\n/g, '<br>')}</p>` : ''}
@@ -427,9 +554,21 @@ ${product.description ? `<h2>Descripción</h2>\n<p>${e(product.description).repl
         '@type': 'Offer',
         url,
         priceCurrency: 'COP',
-        price: Number(product.price),
+        price: finalPrice,
         availability: inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
         itemCondition: 'https://schema.org/NewCondition',
+        // Google muestra el precio anterior tachado junto al de oferta.
+        ...(hasDiscount
+          ? {
+              priceSpecification: {
+                '@type': 'UnitPriceSpecification',
+                priceType: 'https://schema.org/StrikethroughPrice',
+                price: finalCompareAt,
+                priceCurrency: 'COP',
+              },
+            }
+          : {}),
+        hasMerchantReturnPolicy: returnPolicyLd,
         ...(store && storeUrl
           ? { seller: { '@type': 'Organization', name: store.name, url: storeUrl } }
           : {}),
@@ -453,6 +592,11 @@ ${product.description ? `<h2>Descripción</h2>\n<p>${e(product.description).repl
         description,
         url,
         image: ogImage,
+        ...(ogCard ? { imageSize: { width: OG_CARD_WIDTH, height: OG_CARD_HEIGHT } } : {}),
+        imageAlt: `${product.name} — ${price}`,
+        ogDescription,
+        adult: isAdult,
+        extraHead: productMeta,
         ogType: 'product',
         body,
         jsonLd: [productLd, this.breadcrumbLd(breadcrumbs)],
@@ -550,6 +694,7 @@ ${productItems.map((p) => `<li><a href="${e(p.href)}">${e(p.name)}</a> — ${e(p
         description,
         url,
         image,
+        adult: !!store.isAdultContent,
         ogType: 'website',
         body,
         jsonLd: [
@@ -567,6 +712,164 @@ ${productItems.map((p) => `<li><a href="${e(p.href)}">${e(p.name)}</a> — ${e(p
               url: p.href,
             })),
           },
+        ],
+      }),
+    );
+  }
+
+  // "<Categoría> en Medellín — Merku" (búsqueda local) si cabe en 60
+  // caracteres. Mantener igual a categoryPageTitle() de pageMeta.ts.
+  private categoryTitle(name: string): string {
+    const withCity = `${name} en Medellín — Merku`;
+    return withCity.length <= 60 ? withCity : `${name} — Merku`;
+  }
+
+  // Texto con datos reales (cantidad, tiendas, rango de precios): es lo que
+  // diferencia la página de un simple listado y lo que citan los buscadores
+  // con IA. Mantener igual a categoryIntro() de pageMeta.ts.
+  private categoryIntro(c: CategoryCollection): string {
+    const stores = c.storeCount === 1 ? '1 tienda local' : `${c.storeCount} tiendas locales`;
+    const products = c.productCount === 1 ? '1 producto' : `${c.productCount} productos`;
+    const prices =
+      c.minPrice != null && c.maxPrice != null
+        ? c.minPrice === c.maxPrice
+          ? ` a ${this.formatCOP(c.minPrice)}`
+          : `, con precios desde ${this.formatCOP(c.minPrice)} hasta ${this.formatCOP(c.maxPrice)} (IVA incluido)`
+        : '';
+    return `En Merku encuentras ${products} de ${c.name.toLocaleLowerCase('es-CO')} de ${stores} de Medellín${prices}. Pide a domicilio o recoge en la tienda y paga directamente al vendedor por transferencia.`;
+  }
+
+  @Get('og/categories')
+  async getCategoriesOg(@Req() req: Request, @Res() res: Response): Promise<void> {
+    const ua = (req.headers['user-agent'] ?? '') as string;
+    const frontendUrl = this.frontendUrl;
+    const url = `${frontendUrl}/categorias`;
+
+    if (!this.isBot(ua)) {
+      res.redirect(302, url);
+      return;
+    }
+
+    const collections = await findPublicCategoryCollections(this.products.manager);
+
+    // Título y descripción: mantener idénticos a PAGE_META['/categorias'].
+    const html = this.buildListingHtml({
+      title: 'Categorías de productos en tiendas locales — Merku',
+      description:
+        'Explora por categoría los productos de las tiendas locales de Medellín en Merku y encuentra lo que buscas. Pide a domicilio o recoge en la tienda.',
+      url,
+      intro: 'Productos de tiendas y restaurantes locales de Medellín organizados por categoría.',
+      items: collections.map((c) => ({
+        name: c.name,
+        subtitle: c.productCount === 1 ? '1 producto' : `${c.productCount} productos`,
+        href: `${frontendUrl}/categorias/${c.slug}`,
+      })),
+    });
+
+    res.type('html').send(html);
+  }
+
+  @Get('og/category/:slug')
+  async getCategoryOg(@Param('slug') slug: string, @Req() req: Request, @Res() res: Response): Promise<void> {
+    const ua = (req.headers['user-agent'] ?? '') as string;
+    const frontendUrl = this.frontendUrl;
+    const url = `${frontendUrl}/categorias/${encodeURIComponent(slug)}`;
+
+    if (!this.isBot(ua)) {
+      res.redirect(302, url);
+      return;
+    }
+
+    const collection = await findPublicCategoryCollection(this.products.manager, slug);
+    if (!collection) {
+      this.sendNotFound(res);
+      return;
+    }
+
+    const products = await applyPublicCategoryVisibility(
+      this.products
+        .createQueryBuilder('product')
+        .innerJoin('product.category', 'category')
+        .leftJoinAndSelect('product.store', 'store'),
+    )
+      .andWhere('product.categoryId IN (:...ids)', { ids: collection.categoryIds })
+      .orderBy('product.createdAt', 'DESC')
+      .take(100)
+      .getMany();
+
+    const e = (v: string) => this.escapeHtml(v);
+    const title = this.categoryTitle(collection.name);
+    const intro = this.categoryIntro(collection);
+    const description = this.metaDescription(intro, `${collection.name} en tiendas locales de Medellín. Pide en Merku.`);
+    const breadcrumbs = [
+      { name: 'Inicio', url: `${frontendUrl}/home` },
+      { name: 'Categorías', url: `${frontendUrl}/categorias` },
+      { name: collection.name, url },
+    ];
+    const items = products.map((p) => ({
+      name: p.name,
+      href: `${frontendUrl}${buildProductPath(p.id, p.name)}`,
+      price: this.formatCOP(computeLineTax(p.price, 1, p.taxMode, p.taxRate).unitPrice),
+      store: p.store?.name ?? null,
+      image: this.absoluteAssetUrl(p.imageUrl),
+    }));
+    const otherCategories = (await findPublicCategoryCollections(this.products.manager))
+      .filter((c) => c.slug !== collection.slug)
+      .slice(0, 12);
+
+    const body = `<nav aria-label="Ruta de navegación"><ol>${breadcrumbs
+      .map((b) => `<li><a href="${e(b.url)}">${e(b.name)}</a></li>`)
+      .join('')}</ol></nav>
+<h1>${e(collection.name)}</h1>
+<p>${e(intro)}</p>
+<ul>
+${items
+  .map(
+    (p) =>
+      `<li><a href="${e(p.href)}">${e(p.name)}</a> — ${e(p.price)}${p.store ? ` · ${e(p.store)}` : ''}</li>`,
+  )
+  .join('\n')}
+</ul>
+${
+  otherCategories.length
+    ? `<h2>Otras categorías</h2>\n<ul>\n${otherCategories
+        .map((c) => `<li><a href="${e(`${frontendUrl}/categorias/${c.slug}`)}">${e(c.name)}</a></li>`)
+        .join('\n')}\n</ul>`
+    : ''
+}`;
+
+    const firstImage = items.find((i) => i.image)?.image;
+    res.type('html').send(
+      this.buildPage({
+        title,
+        description,
+        url,
+        image: firstImage ?? `${frontendUrl}/og-image.png`,
+        robots: collection.indexable ? undefined : 'noindex, follow',
+        ogType: 'website',
+        body,
+        jsonLd: [
+          {
+            '@context': 'https://schema.org',
+            '@type': 'CollectionPage',
+            name: title,
+            description,
+            url,
+            inLanguage: 'es-CO',
+            isPartOf: { '@id': `${frontendUrl}/#website` },
+            ...(collection.lastModified ? { dateModified: collection.lastModified.toISOString() } : {}),
+            mainEntity: {
+              '@type': 'ItemList',
+              numberOfItems: collection.productCount,
+              itemListElement: items.map((p, i) => ({
+                '@type': 'ListItem',
+                position: i + 1,
+                name: p.name,
+                url: p.href,
+              })),
+            },
+          },
+          this.breadcrumbLd(breadcrumbs),
         ],
       }),
     );

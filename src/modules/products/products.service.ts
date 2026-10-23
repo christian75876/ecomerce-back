@@ -16,6 +16,7 @@ import { ProductFavorite } from './entities/product-favorite.entity';
 import { ProductVideo, VideoType } from './entities/product-video.entity';
 import { ProductImage } from './entities/product-image.entity';
 import { Category } from '../categories/entities/category.entity';
+import { findPublicCategoryCollection } from '../categories/category-collections';
 import { QueryProductsDto } from './dto/query-products.dto';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -117,6 +118,17 @@ export class ProductsService {
     }
     if (filters.categoryId) {
       qb.andWhere('product.categoryId = :categoryId', { categoryId: filters.categoryId });
+    }
+    if (filters.categorySlug) {
+      // Mismos productos que el HTML para bots de /categorias/:slug: sin
+      // tiendas +18 (applyPublicCategoryVisibility las excluye).
+      const collection = await findPublicCategoryCollection(this.productsRepository.manager, filters.categorySlug);
+      if (collection) {
+        qb.andWhere('product.categoryId IN (:...collectionCategoryIds)', { collectionCategoryIds: collection.categoryIds });
+        qb.andWhere('(store.id IS NULL OR store.isAdultContent = false)');
+      } else {
+        qb.andWhere('1 = 0');
+      }
     }
     if (filters.storeId) {
       qb.andWhere('product.storeId = :storeId', { storeId: filters.storeId });

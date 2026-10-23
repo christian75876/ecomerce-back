@@ -32,6 +32,7 @@ import { AdvertisingModule } from './modules/advertising/advertising.module';
 import { PushModule } from './modules/push/push.module';
 import { SitemapModule } from './modules/sitemap/sitemap.module';
 import { OgPreviewModule } from './modules/og-preview/og-preview.module';
+import { MerchantFeedModule } from './modules/merchant-feed/merchant-feed.module';
 
 @Module({
   imports: [
@@ -66,6 +67,7 @@ import { OgPreviewModule } from './modules/og-preview/og-preview.module';
     PushModule,
     SitemapModule,
     OgPreviewModule,
+    MerchantFeedModule,
   ],
   controllers: [AppController],
   providers: [
